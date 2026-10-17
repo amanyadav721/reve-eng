@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tagalong — UI direction: Golden hour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* Golden hour palette. Mirrors design/colors.ts. */
+    --peach: #F7CFAA;       /* app background */
+    --cream: #FCE6CD;       /* cards */
+    --cream-line: #F1C79E;  /* card borders */
+    --sand: #F8DDBF;        /* chips inside cards */
+    --ink: #231A14;         /* text, primary buttons, active nav */
+    --cocoa: #6E5142;       /* secondary text */
+    --dune: #8E6F5D;        /* inactive tabs */
+    --sky-1: #3E56A8; --sky-2: #6F8FCB; --sky-3: #C7D3DA; --glow: #F6CDA4;
+    --terracotta: #B8482A; --saffron: #E9963A; --gold: #F2B33D;
+    --leaf: #3F7A4E; --meadow: #7DA857; --grass: #6A9A4A; --rose: #E08A74;
+    --font: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font); background: var(--peach); color: var(--ink); -webkit-font-smoothing: antialiased;
+         background-image: repeating-linear-gradient(115deg, rgba(255,255,255,.08) 0 2px, transparent 2px 22px); }
+  main { max-width: 1240px; margin: 0 auto; padding: 48px 24px 80px; }
+  header.page h1 { font-size: 40px; line-height: 1.05; margin: 0 0 10px; font-weight: 700; letter-spacing: -1px; }
+  header.page p { color: var(--cocoa); font-size: 17px; margin: 0; max-width: 700px; line-height: 1.5; }
+  h2.sec { font-size: 22px; margin: 64px 0 6px; font-weight: 700; letter-spacing: -.3px; }
+  p.note { color: var(--cocoa); margin: 0 0 18px; line-height: 1.5; max-width: 720px; }
+
+  .phones { display: flex; flex-wrap: wrap; gap: 36px; justify-content: center; margin-top: 40px; }
+  .phone-wrap { display: grid; gap: 14px; justify-items: center; }
+  .phone-wrap > span { font-size: 13px; font-weight: 600; color: var(--cocoa); letter-spacing: .4px; text-transform: uppercase; }
+  .phone { width: 368px; border-radius: 54px; padding: 14px; background: linear-gradient(145deg, #E9B48E, #C98E6A);
+           box-shadow: 0 30px 60px rgba(94,39,22,.25), inset 0 0 0 2px rgba(255,255,255,.25); }
+  .screen { width: 340px; height: 736px; border-radius: 42px; overflow: hidden; position: relative; background: var(--peach); }
+  .scroll { height: 100%; overflow-y: auto; scrollbar-width: none; padding-bottom: 96px; }
+  .scroll::-webkit-scrollbar { display: none; }
+  .island { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 104px; height: 30px; border-radius: 20px; background: #0b0908; z-index: 20; }
+  .status { position: absolute; top: 14px; left: 30px; right: 26px; display: flex; justify-content: space-between; font-size: 14px; font-weight: 600; z-index: 19; }
+
+  .pill-btn { display: block; width: 100%; border: 0; border-radius: 999px; padding: 16px; font: 600 16px var(--font); cursor: pointer;
+              transition: transform .18s cubic-bezier(.3,1.6,.5,1); }
+  .pill-btn:active { transform: scale(.96); }
+  .pill-btn.cream { background: #F6E7C8; color: var(--ink); box-shadow: 0 6px 18px rgba(0,0,0,.18); }
+  .pill-btn.ink { background: var(--ink); color: var(--cream); }
+  .pts { display: inline-flex; align-items: center; gap: 5px; background: rgba(252,230,205,.95); color: var(--ink); font-size: 12.5px; font-weight: 600; padding: 5px 10px 5px 6px; border-radius: 999px; white-space: nowrap; }
+  .coin { width: 16px; height: 16px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #FFD877, var(--gold) 60%, #C98A12); box-shadow: inset 0 0 0 1.5px rgba(150,95,10,.35); flex: none; }
+
+  /* ---------- Welcome ---------- */
+  .welcome { background: linear-gradient(180deg, var(--glow) 0%, #EBCBAE 30%, #BFCBD1 58%, #9FB3C6 70%); height: 100%; position: relative; }
+  .welcome .brand { position: absolute; top: 62px; left: 26px; display: flex; gap: 10px; align-items: center; font-weight: 700; font-size: 17px; letter-spacing: -.2px; }
+  .welcome .brand .logo { width: 38px; height: 38px; border-radius: 50%; background: var(--cream); display: grid; place-items: center; padding: 3px; }
+  .welcome h1 { position: absolute; top: 118px; left: 26px; right: 26px; margin: 0; font-size: 32px; line-height: 1.1; font-weight: 700; letter-spacing: -.9px; }
+  .welcome p { position: absolute; top: 200px; left: 26px; right: 40px; margin: 0; font-size: 14px; line-height: 1.55; color: var(--cocoa); }
+  .welcome svg.scene { position: absolute; bottom: 0; left: 0; }
+  .welcome .w-mascot { position: absolute; left: 22px; bottom: 112px; width: 150px; }
+  .welcome .cta { position: absolute; left: 24px; right: 24px; bottom: 36px; }
+
+  /* ---------- Today ---------- */
+  .hero { position: relative; height: 392px; }
+  .hero > svg { position: absolute; inset: 0; }
+  .hello { position: absolute; top: 60px; left: 20px; right: 20px; display: flex; align-items: center; gap: 12px; color: #fff; z-index: 3; }
+  .avatar { width: 44px; height: 44px; border-radius: 50%; background: var(--saffron); display: grid; place-items: center; font-weight: 700; color: var(--ink); border: 2.5px solid rgba(255,255,255,.75); flex: none; }
+  .hello small { display: block; font-size: 12.5px; opacity: .85; font-weight: 500; }
+  .hello b { font-size: 18px; font-weight: 600; letter-spacing: -.2px; white-space: nowrap; }
+  .hello .spacer { flex: 1; }
+
+  .mascot-on-path { position: absolute; z-index: 2; transition: left .9s cubic-bezier(.45,0,.2,1), top .9s cubic-bezier(.45,0,.2,1), width .9s; }
+  .mascot-on-path.hop svg { animation: hop .9s ease-in-out; }
+  @keyframes hop { 0%,100% { transform: translateY(0); } 40% { transform: translateY(-22px) rotate(-6deg); } 70% { transform: translateY(-6px); } }
+  .float-pts { position: absolute; z-index: 4; font-weight: 700; font-size: 15px; color: var(--ink); background: var(--gold); padding: 3px 10px; border-radius: 999px; pointer-events: none; animation: floatUp 1.3s ease-out forwards; }
+  @keyframes floatUp { 0% { opacity: 0; transform: translateY(8px) scale(.8); } 15% { opacity: 1; transform: translateY(0) scale(1.08); } 100% { opacity: 0; transform: translateY(-46px) scale(1); } }
+
+  .content { padding: 0 16px; margin-top: -20px; position: relative; z-index: 3; }
+  .now-card { background: var(--cream); border-radius: 26px; padding: 16px 16px 14px; box-shadow: 0 14px 30px rgba(94,39,22,.16); }
+  .now-card.swap { animation: swap .5s cubic-bezier(.2,.9,.3,1.15); }
+  @keyframes swap { from { opacity: .2; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+  .now-top { display: flex; justify-content: space-between; align-items: center; }
+  .when { font-size: 11.5px; font-weight: 700; letter-spacing: .7px; color: var(--terracotta); text-transform: uppercase; display: flex; align-items: center; gap: 6px; }
+  .when i { width: 7px; height: 7px; border-radius: 50%; background: var(--terracotta); box-shadow: 0 0 0 0 rgba(184,72,42,.5); animation: live 1.6s infinite; }
+  @keyframes live { 70% { box-shadow: 0 0 0 7px rgba(184,72,42,0); } 100% { box-shadow: 0 0 0 0 rgba(184,72,42,0); } }
+  .now-card h2 { font-size: 22px; line-height: 1.15; margin: 6px 0 4px; font-weight: 700; letter-spacing: -.5px; }
+  .now-card .meta { font-size: 13px; color: var(--cocoa); }
+  .memory { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0; padding-top: 14px; border-top: 1.5px dashed var(--cream-line); font-size: 13.5px; line-height: 1.45; }
+  .memory .face { width: 38px; flex: none; margin-top: -2px; }
+  .memory em { font-style: normal; font-weight: 600; }
+  .actions { display: flex; gap: 10px; }
+  .actions .pill-btn { flex: 1; }
+  .icon-btn { width: 52px; height: 52px; border-radius: 50%; border: 0; background: var(--sand); display: grid; place-items: center; flex: none; cursor: pointer; }
+
+  h3.t { font-size: 16px; font-weight: 600; margin: 26px 4px 10px; letter-spacing: -.2px; display: flex; justify-content: space-between; align-items: baseline; }
+  h3.t a { font-size: 13px; color: var(--cocoa); font-weight: 500; text-decoration: none; }
+  .later { padding: 0 4px; }
+  .lrow { display: grid; grid-template-columns: 46px 14px 1fr; gap: 10px; align-items: start; }
+  .lrow .tm { font-size: 13px; font-weight: 600; color: var(--cocoa); padding-top: 1px; text-align: right; }
+  .lrow .rail { position: relative; height: 100%; display: flex; justify-content: center; }
+  .lrow .rail::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--cocoa); background: var(--peach); margin-top: 4px; z-index: 1; }
+  .lrow .rail::after { content: ""; position: absolute; top: 16px; bottom: -4px; width: 2px; background: var(--cream-line); }
+  .lrow:last-child .rail::after { display: none; }
+  .lrow .tx { padding-bottom: 16px; }
+  .lrow .tx b { display: block; font-size: 14.5px; font-weight: 600; }
+  .lrow .tx span { font-size: 12.5px; color: var(--cocoa); }
+
+  .dishes { display: flex; gap: 12px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 20px 6px; }
+  .dishes::-webkit-scrollbar { display: none; }
+  .dish { flex: none; width: 150px; }
+  .dish .art { position: relative; height: 110px; border-radius: 18px; overflow: hidden; }
+  .dish .art .pts { position: absolute; top: 8px; right: 8px; }
+  .dish b { display: block; font-size: 14px; font-weight: 600; margin: 8px 2px 0; }
+  .dish span { font-size: 12px; color: var(--cocoa); margin: 0 2px; }
+  .dish.got .art::after { content: "✓ Tasted"; position: absolute; left: 8px; bottom: 8px; font-size: 11.5px; font-weight: 700; background: var(--ink); color: var(--cream); border-radius: 999px; padding: 3px 9px; }
+
+  .nav { position: absolute; left: 0; right: 0; bottom: 0; height: 84px; background: rgba(247,207,170,.94); backdrop-filter: blur(10px); display: flex; justify-content: space-around; align-items: flex-start; padding-top: 10px; border-top: 1px solid rgba(110,81,66,.12); z-index: 10; }
+  .nav div { display: grid; justify-items: center; gap: 4px; font-size: 11.5px; color: var(--dune); font-weight: 500; width: 60px; }
+  .nav div.on { color: var(--ink); font-weight: 700; }
+  .nav svg { width: 24px; height: 24px; }
+  .home-bar { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); width: 120px; height: 5px; border-radius: 3px; background: var(--ink); z-index: 11; }
+
+  /* ---------- Memory ---------- */
+  .mem-head { padding: 58px 22px 6px; display: flex; gap: 14px; align-items: center; }
+  .mem-head .face { width: 66px; flex: none; }
+  .mem-head h1 { margin: 0; font-size: 23px; line-height: 1.15; letter-spacing: -.5px; font-weight: 700; }
+  .mem-head p { margin: 4px 0 0; font-size: 13px; color: var(--cocoa); line-height: 1.4; }
+  .mem { padding: 0 16px; }
+  .mem h3.t { margin-top: 22px; }
+  .mcard { background: var(--cream); border: 1.5px solid var(--cream-line); border-radius: 20px; padding: 4px 14px; }
+  .mrow { display: flex; gap: 12px; align-items: center; padding: 11px 0; }
+  .mrow + .mrow { border-top: 1.5px dashed var(--cream-line); }
+  .mrow .ic { width: 34px; height: 34px; border-radius: 50%; background: var(--sand); display: grid; place-items: center; font-size: 16px; flex: none; }
+  .mrow .tx { flex: 1; min-width: 0; }
+  .mrow .tx b { display: block; font-size: 14px; font-weight: 600; line-height: 1.3; }
+  .mrow .tx span { font-size: 11.5px; color: var(--cocoa); }
+  .mrow .x { width: 28px; height: 28px; border-radius: 50%; border: 0; background: transparent; color: var(--dune); font-size: 18px; cursor: pointer; flex: none; }
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tag { font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: 999px; background: var(--cream); border: 1.5px solid var(--cream-line); }
+  .tag.no { background: transparent; color: var(--cocoa); text-decoration: line-through; text-decoration-color: rgba(110,81,66,.5); }
+  .learned { background: var(--ink); color: var(--cream); border-radius: 20px; padding: 14px; display: flex; gap: 12px; align-items: flex-start; font-size: 13.5px; line-height: 1.45; }
+  .learned .face { width: 40px; flex: none; }
+  .learned small { display: block; color: #C9AE98; font-size: 11.5px; margin-top: 4px; }
+  .trips { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 20px 4px; }
+  .trips::-webkit-scrollbar { display: none; }
+  .trip { flex: none; width: 128px; border-radius: 18px; overflow: hidden; background: var(--cream); border: 1.5px solid var(--cream-line); }
+  .trip svg { display: block; }
+  .trip div { padding: 8px 10px 10px; font-size: 12px; color: var(--cocoa); }
+  .trip b { display: block; font-size: 14px; color: var(--ink); }
+
+  /* ---------- Laddoo idle loop (stand-in for the Rive state machine) ---------- */
+  .laddoo .bob { animation: bob 2.8s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 100%; }
+  .laddoo .earL { animation: earL 2.8s ease-in-out infinite; transform-box: fill-box; transform-origin: 100% 45%; }
+  .laddoo .earR { animation: earR 2.8s ease-in-out infinite; transform-box: fill-box; transform-origin: 0% 45%; }
+  .laddoo .trunk { animation: trunk 3.6s ease-in-out infinite; transform-box: fill-box; transform-origin: 0% 0%; }
+  .laddoo .lids { animation: blink 4.6s infinite; transform-box: fill-box; transform-origin: 50% 0%; }
+  @keyframes bob { 0%,100% { transform: translateY(0) scale(1,1); } 50% { transform: translateY(-2px) scale(1.015,.985); } }
+  @keyframes earL { 0%,100% { transform: rotate(0); } 50% { transform: rotate(-7deg); } }
+  @keyframes earR { 0%,100% { transform: rotate(0); } 50% { transform: rotate(7deg); } }
+  @keyframes trunk { 0%,100% { transform: rotate(0); } 50% { transform: rotate(-6deg); } }
+  @keyframes blink { 0%, 93%, 100% { transform: scaleY(0); } 96% { transform: scaleY(1); } }
+  @media (prefers-reduced-motion: reduce) { .laddoo * , .when i { animation: none !important; } }
+
+  /* ---------- Palette ---------- */
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+  .sw { border-radius: 20px; overflow: hidden; background: var(--cream); border: 1.5px solid var(--cream-line); }
+  .sw .c { height: 84px; display: flex; align-items: flex-end; padding: 10px 12px; font-weight: 600; font-size: 14px; }
+  .sw .m { padding: 10px 12px 12px; font-size: 12.5px; line-height: 1.4; color: var(--cocoa); }
+  .sw .m b { color: var(--ink); display: block; font-size: 14px; font-family: ui-monospace, Menlo, monospace; font-weight: 600; }
+  .sky-sw { height: 84px; background: linear-gradient(180deg, var(--sky-1), var(--sky-2) 45%, var(--sky-3) 75%, var(--glow)); }
+  .rules { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+  .rule { background: var(--cream); border: 1.5px solid var(--cream-line); border-radius: 18px; padding: 14px 16px; font-size: 14.5px; line-height: 1.5; }
+  .rule b { display: block; margin-bottom: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <header class="page">
+    <h1>Tagalong · Golden hour</h1>
+    <p>Each city is an illustrated scene, and your day is a trail through it. Laddoo, your baby-elephant travel buddy, remembers how you like to travel and plans every trip around it. Tap <b>I'm here</b> on the Today screen to try it.</p>
+  </header>
+
+  <div class="phones">
+    <!-- ============ WELCOME ============ -->
+    <div class="phone-wrap"><div class="phone"><div class="screen">
+      <div class="island"></div>
+      <div class="status"><span>9:41</span><span>●●● ▮</span></div>
+      <div class="welcome">
+        <div class="brand"><div class="logo" data-laddoo="head"></div>Tagalong</div>
+        <h1>A travel buddy who never forgets</h1>
+        <p>Tell Laddoo how you like to travel, once. Every trip after that is planned around you: what to see, what to eat, and how to get there.</p>
+        <svg class="scene" width="340" height="470" viewBox="0 0 340 470" aria-hidden="true">
+          <g fill="#FBEFE2"><ellipse cx="250" cy="70" rx="34" ry="11"/><ellipse cx="272" cy="62" rx="20" ry="12"/><ellipse cx="232" cy="64" rx="15" ry="9"/></g>
+          <g transform="translate(118 58) rotate(14)"><path d="M0 -16 L12 0 L0 18 L-12 0 Z" fill="#B8482A"/><path d="M0 -16 L12 0 L0 0 Z" fill="#E9963A"/><path d="M0 18 q-6 14 4 26 q8 10 -2 22" stroke="#6E5142" stroke-width="1" fill="none"/></g>
+          <path d="M0 200 L38 176 L72 190 L120 160 L160 184 L200 168 L250 190 L290 166 L340 186 V280 H0Z" fill="#8FA7BC"/>
+          <path d="M0 236 C60 200 120 214 170 222 C230 232 280 206 340 214 V300 H0Z" fill="#5F8D63"/>
+          <g transform="translate(172 150)">
+            <rect x="0" y="90" width="168" height="150" fill="#D9705E"/>
+            <rect x="18" y="58" width="132" height="40" fill="#E08A74"/>
+            <rect x="40" y="30" width="88" height="34" fill="#E5977F"/>
+            <rect x="62" y="6" width="44" height="30" fill="#EAA48A"/>
+            <path d="M62 6 q22 -18 44 0z" fill="#EAA48A"/>
+            <path d="M40 30 q10 -10 20 0z M108 30 q10 -10 20 0z M18 58 q10 -10 20 0z M130 58 q10 -10 20 0z" fill="#E5977F"/>
+            <g fill="#F8D9C2">
+              <path d="M72 30 v-12 q6 -7 12 0 v12z M90 30 v-12 q6 -7 12 0 v12z"/>
+              <path d="M50 58 v-14 q6 -7 12 0 v14z M68 58 v-14 q6 -7 12 0 v14z M86 58 v-14 q6 -7 12 0 v14z M104 58 v-14 q6 -7 12 0 v14z"/>
+              <path d="M28 90 v-16 q6 -7 12 0 v16z M48 90 v-16 q6 -7 12 0 v16z M68 90 v-16 q6 -7 12 0 v16z M88 90 v-16 q6 -7 12 0 v16z M108 90 v-16 q6 -7 12 0 v16z M128 90 v-16 q6 -7 12 0 v16z"/>
+              <path d="M12 130 v-18 q7 -8 14 0 v18z M36 130 v-18 q7 -8 14 0 v18z M60 130 v-18 q7 -8 14 0 v18z M84 130 v-18 q7 -8 14 0 v18z M108 130 v-18 q7 -8 14 0 v18z M132 130 v-18 q7 -8 14 0 v18z"/>
+              <path d="M12 170 v-18 q7 -8 14 0 v18z M36 170 v-18 q7 -8 14 0 v18z M60 170 v-18 q7 -8 14 0 v18z M84 170 v-18 q7 -8 14 0 v18z M108 170 v-18 q7 -8 14 0 v18z M132 170 v-18 q7 -8 14 0 v18z"/>
+            </g>
+            <rect x="0" y="90" width="168" height="5" fill="#C25F4E"/><rect x="0" y="136" width="168" height="4" fill="#C25F4E"/>
+            <rect x="140" y="58" width="10" height="182" fill="#C96B59" opacity=".6"/>
+          </g>
+          <g><rect x="34" y="240" width="5" height="40" fill="#6B4A2F"/><circle cx="36" cy="232" r="22" fill="#3F7A4E"/><circle cx="22" cy="246" r="14" fill="#4E8F57"/><circle cx="52" cy="244" r="15" fill="#4E8F57"/></g>
+          <path d="M0 290 C80 270 200 300 340 280 V470 H0Z" fill="#7DA857"/>
+          <path d="M0 340 C100 320 220 350 340 330 V470 H0Z" fill="#6A9A4A"/>
+          <path d="M0 370 C90 352 230 380 340 360 V470 H0Z" fill="#9A4326"/>
+          <path d="M0 392 C110 376 230 400 340 384 V470 H0Z" fill="#8C3B22"/>
+          <g fill="#7A321C" opacity=".7"><ellipse cx="60" cy="420" rx="18" ry="3"/><ellipse cx="250" cy="440" rx="24" ry="3"/><ellipse cx="160" cy="455" rx="12" ry="2.5"/></g>
+        </svg>
+        <div class="w-mascot" data-laddoo="full"></div>
+        <div class="cta"><button class="pill-btn cream">Plan my first trip</button></div>
+      </div>
+      <div class="home-bar" style="background:#F6E7C8"></div>
+    </div></div><span>Welcome</span></div>
+
+    <!-- ============ TODAY (game path) ============ -->
+    <div class="phone-wrap"><div class="phone"><div class="screen">
+      <div class="island"></div>
+      <div class="status" style="color:#fff"><span>9:41</span><span>●●● ▮</span></div>
+      <div class="scroll">
+        <div class="hero" id="hero">
+          <svg width="340" height="392" viewBox="0 0 340 392" aria-hidden="true">
+            <defs>
+              <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#3E56A8"/><stop offset=".4" stop-color="#6F8FCB"/><stop offset=".58" stop-color="#C7D3DA"/><stop offset=".68" stop-color="#F6CDA4"/>
+              </linearGradient>
+              <radialGradient id="sunglow"><stop offset="0" stop-color="#FCE3A8" stop-opacity=".9"/><stop offset="1" stop-color="#FCE3A8" stop-opacity="0"/></radialGradient>
+            </defs>
+            <rect width="340" height="392" fill="url(#sky)"/>
+            <circle cx="196" cy="186" r="70" fill="url(#sunglow)"/>
+            <circle cx="196" cy="186" r="20" fill="#F7C873"/>
+            <g fill="#F4F0F0" opacity=".9"><ellipse cx="282" cy="140" rx="30" ry="9"/><ellipse cx="300" cy="133" rx="17" ry="10"/><ellipse cx="266" cy="135" rx="13" ry="8"/></g>
+            <g fill="#F4F0F0" opacity=".7"><ellipse cx="54" cy="156" rx="26" ry="7"/><ellipse cx="68" cy="150" rx="14" ry="8"/></g>
+            <path d="M0 206 L36 186 L78 198 L120 178 L160 196 L210 182 L256 198 L300 180 L340 194 V240 H0Z" fill="#9AB0C2"/>
+            <path d="M70 236 C108 200 168 190 222 204 C262 214 300 224 340 230 V270 H0 V244Z" fill="#5F8D63"/>
+            <g fill="#D7A46F">
+              <rect x="128" y="194" width="62" height="9"/>
+              <rect x="128" y="190" width="5" height="5"/><rect x="138" y="190" width="5" height="5"/><rect x="148" y="190" width="5" height="5"/><rect x="168" y="190" width="5" height="5"/><rect x="178" y="190" width="5" height="5"/><rect x="185" y="190" width="5" height="5"/>
+              <rect x="154" y="181" width="12" height="22"/><path d="M154 181 q6 -9 12 0z"/>
+            </g>
+            <rect x="128" y="201" width="62" height="2" fill="#B98552"/>
+            <path d="M0 256 C80 240 170 250 340 242 V392 H0Z" fill="#7DA857"/>
+            <g transform="translate(16 222)">
+              <rect x="0" y="26" width="70" height="44" fill="#D9705E"/>
+              <rect x="8" y="12" width="54" height="18" fill="#E08A74"/>
+              <rect x="20" y="2" width="30" height="13" fill="#E5977F"/><path d="M20 2 q15 -10 30 0z" fill="#E5977F"/>
+              <g fill="#F8D9C2"><path d="M26 15 v-6 q3 -4 6 0 v6z M38 15 v-6 q3 -4 6 0 v6z M13 30 v-8 q3 -4 6 0 v8z M25 30 v-8 q3 -4 6 0 v8z M37 30 v-8 q3 -4 6 0 v8z M49 30 v-8 q3 -4 6 0 v8z"/>
+              <path d="M6 46 v-9 q3.5 -4 7 0 v9z M18 46 v-9 q3.5 -4 7 0 v9z M30 46 v-9 q3.5 -4 7 0 v9z M42 46 v-9 q3.5 -4 7 0 v9z M54 46 v-9 q3.5 -4 7 0 v9z"/>
+              <path d="M6 64 v-9 q3.5 -4 7 0 v9z M18 64 v-9 q3.5 -4 7 0 v9z M30 64 v-9 q3.5 -4 7 0 v9z M42 64 v-9 q3.5 -4 7 0 v9z M54 64 v-9 q3.5 -4 7 0 v9z"/></g>
+            </g>
+            <g transform="translate(250 222)">
+              <rect x="0" y="12" width="30" height="18" fill="#F1D3B0"/><path d="M-3 12 h36 l-4 -9 h-28z" fill="#B8482A"/><path d="M5 12 l2 -9 M13 12 l1 -9 M21 12 l-1 -9 M29 12 l-2 -9" stroke="#F6E7C8" stroke-width="3"/>
+              <rect x="40" y="16" width="30" height="16" fill="#F1D3B0"/><path d="M37 16 h36 l-4 -9 h-28z" fill="#3F7A4E"/><path d="M45 16 l2 -9 M53 16 l1 -9 M61 16 l-1 -9 M69 16 l-2 -9" stroke="#F6E7C8" stroke-width="3"/>
+            </g>
+            <g><rect x="20" y="320" width="4" height="30" fill="#6B4A2F"/><circle cx="22" cy="312" r="18" fill="#3F7A4E"/><circle cx="8" cy="324" r="12" fill="#4E8F57"/></g>
+            <path d="M0 326 C90 306 250 336 340 312 V392 H0Z" fill="#6A9A4A"/>
+            <g transform="translate(284 292)">
+              <rect x="0" y="16" width="44" height="20" rx="3" fill="#B8482A"/><rect x="0" y="16" width="44" height="5" fill="#9C3B22"/>
+              <circle cx="9" cy="39" r="5" fill="#3A2A20"/><circle cx="35" cy="39" r="5" fill="#3A2A20"/>
+              <rect x="20" y="-10" width="3" height="27" fill="#6B4A2F"/><path d="M-6 -8 q27 -22 56 0z" fill="#E9963A"/><path d="M8 -8 q14 -14 28 0z" fill="#F2B33D"/>
+            </g>
+            <path d="M 30 420 C 40 385, 50 358, 72 342 C 110 318, 175 335, 205 312 C 232 292, 150 292, 120 272" fill="none" stroke="#F4DDBF" stroke-width="18" stroke-linecap="round"/>
+            <path d="M 120 272 C 92 254, 200 258, 222 240 C 240 225, 175 218, 158 202" fill="none" stroke="#F4DDBF" stroke-width="10" stroke-linecap="round"/>
+            <path d="M 30 420 C 40 385, 50 358, 72 342 C 110 318, 175 335, 205 312 C 232 292, 150 292, 120 272 C 92 254, 200 258, 222 240 C 240 225, 175 218, 158 202" fill="none" stroke="#E5C29C" stroke-width="2.5" stroke-dasharray="5 9" stroke-linecap="round"/>
+            <g id="nodes"></g>
+          </svg>
+          <div class="hello">
+            <div class="avatar">A</div>
+            <div><small>Hi Aman</small><b>Day 2 in Jaipur</b></div>
+            <div class="spacer"></div>
+            <span class="pts"><span class="coin"></span><span id="ptsTotal">1,240</span></span>
+          </div>
+          <div class="mascot-on-path" id="pathMascot" data-laddoo="full"></div>
+        </div>
+
+        <div class="content">
+          <div class="now-card" id="nowCard"></div>
+
+          <h3 class="t">Later today <a href="#">Edit</a></h3>
+          <div class="later" id="later"></div>
+
+          <h3 class="t">Your Jaipur food list <a href="#">2 of 6</a></h3>
+          <div class="dishes" id="dishes"></div>
+          <div style="height:24px"></div>
+        </div>
+      </div>
+      <nav class="nav" data-nav="0"></nav>
+      <div class="home-bar"></div>
+    </div></div><span>Today</span></div>
+
+    <!-- ============ MEMORY ============ -->
+    <div class="phone-wrap"><div class="phone"><div class="screen">
+      <div class="island"></div>
+      <div class="status"><span>9:41</span><span>●●● ▮</span></div>
+      <div class="scroll">
+        <div class="mem-head">
+          <div class="face" data-laddoo="head"></div>
+          <div><h1>What Laddoo remembers</h1><p>Only you can see this. Tap anything to change it, or forget it.</p></div>
+        </div>
+        <div class="mem">
+          <h3 class="t">Learned this week</h3>
+          <div class="learned">
+            <div class="face" data-laddoo="head"></div>
+            <div>You said the elephant ride at Amber Fort felt wrong. I won't suggest animal rides again, anywhere.<small>From our chat · Oct 16 · Undo</small></div>
+          </div>
+
+          <h3 class="t">About you</h3>
+          <div class="mcard">
+            <div class="mrow"><div class="ic">🥚</div><div class="tx"><b>Vegetarian, eats eggs</b><span>You told me · Mar 2026</span></div><button class="x" aria-label="Forget">×</button></div>
+            <div class="mrow"><div class="ic">🌶️</div><div class="tx"><b>Medium spice, not more</b><span>You skipped laal maas twice</span></div><button class="x" aria-label="Forget">×</button></div>
+            <div class="mrow"><div class="ic">😴</div><div class="tx"><b>Nothing before 8 AM</b><span>You snoozed 3 sunrise plans</span></div><button class="x" aria-label="Forget">×</button></div>
+            <div class="mrow"><div class="ic">🦶</div><div class="tx"><b>Tired after about 4 stops</b><span>From your check-ins</span></div><button class="x" aria-label="Forget">×</button></div>
+            <div class="mrow"><div class="ic">👛</div><div class="tx"><b>About ₹1,500 a day</b><span>Your usual spend, excluding stay</span></div><button class="x" aria-label="Forget">×</button></div>
+          </div>
+
+          <h3 class="t">You love · you skip</h3>
+          <div class="tags">
+            <span class="tag">🌇 Sunsets</span><span class="tag">☕ Rooftop cafés</span><span class="tag">🧺 Old bazaars</span><span class="tag">🥟 Street food</span><span class="tag">📷 Quiet photo spots</span>
+            <span class="tag no">Malls</span><span class="tag no">Long queues</span><span class="tag no">Animal rides</span>
+          </div>
+
+          <h3 class="t">Travels with</h3>
+          <div class="mcard">
+            <div class="mrow"><div class="ic" style="background:#E5D0F0">P</div><div class="tx"><b>Priya</b><span>Vegan · loves museums · gets carsick on hill roads</span></div><button class="x" aria-label="Forget">×</button></div>
+          </div>
+
+          <h3 class="t">Trips together <a href="#">3 trips</a></h3>
+          <div class="trips" id="trips"></div>
+          <div style="height:20px"></div>
+        </div>
+      </div>
+      <nav class="nav" data-nav="4"></nav>
+      <div class="home-bar"></div>
+    </div></div><span>Memory</span></div>
+  </div>
+
+  <h2 class="sec">Palette</h2>
+  <p class="note">Taken from a city at golden hour. The UI stays calm (peach, cream, ink). Color lives in the illustrations and rewards.</p>
+  <div class="swatches">
+    <div class="sw"><div class="c" style="background:#F7CFAA">Peach</div><div class="m"><b>#F7CFAA</b>App background</div></div>
+    <div class="sw"><div class="c" style="background:#FCE6CD">Cream</div><div class="m"><b>#FCE6CD</b>Cards · border #F1C79E</div></div>
+    <div class="sw"><div class="c" style="background:#231A14;color:#FCE6CD">Ink</div><div class="m"><b>#231A14</b>Text, main button · 11.8:1 on peach</div></div>
+    <div class="sw"><div class="c" style="background:#6E5142;color:#FCE6CD">Cocoa</div><div class="m"><b>#6E5142</b>Secondary text · 5.9:1 on cream</div></div>
+    <div class="sw"><div class="sky-sw"></div><div class="m"><b>#3E56A8 → #F6CDA4</b>Sky · white text 6.8:1</div></div>
+    <div class="sw"><div class="c" style="background:#B8482A;color:#fff">Terracotta</div><div class="m"><b>#B8482A</b>"Now", food · white 5.3:1</div></div>
+    <div class="sw"><div class="c" style="background:#F2B33D">Gold</div><div class="m"><b>#F2B33D</b>Points, rewards · ink 9.2:1</div></div>
+    <div class="sw"><div class="c" style="background:#E9963A">Saffron</div><div class="m"><b>#E9963A</b>Laddoo's hat, warm accents</div></div>
+    <div class="sw"><div class="c" style="background:#3F7A4E;color:#fff">Leaf</div><div class="m"><b>#3F7A4E</b>Nature, done · white 5.1:1</div></div>
+    <div class="sw"><div class="c" style="background:#9EACC8">Laddoo</div><div class="m"><b>#9EACC8</b>Mascot skin · ears #F0A897</div></div>
+  </div>
+
+  <h2 class="sec">Rules</h2>
+  <div class="rules">
+    <div class="rule"><b>One thing at a time.</b>Each screen has one hero (the scene and the Now card) and one ink button. Everything else is quieter.</div>
+    <div class="rule"><b>Color lives in the art.</b>Screens are peach, cream and ink. Saturated color comes from the scene, Laddoo and rewards.</div>
+    <div class="rule"><b>Label only what matters.</b>On the trail, only the current stop gets a label. The rest are icons; tap one to see it.</div>
+    <div class="rule"><b>The sky tells the time.</b>Morning is pale and gold, afternoon blue, golden hour peach, night indigo with lit windows.</div>
+    <div class="rule"><b>Memory shows up as a reason.</b>Laddoo explains a suggestion with what it remembers ("You loved…"), so you can see it learning.</div>
+    <div class="rule"><b>Flat illustration, no outlines.</b>Shapes, soft shading and grain, the same in scenes, Laddoo, dish cards and stamps.</div>
+  </div>
+</main>
+
+<script>
+// Laddoo, the baby elephant. Flat shapes, no outlines, so it matches the scenes.
+function laddoo(kind) {
+  const head = `
+    <g class="earR"><ellipse cx="88" cy="52" rx="16" ry="20" fill="#7F8DAD"/></g>
+    <circle cx="58" cy="52" r="29" fill="#9EACC8"/>
+    <path d="M78 31 a29 29 0 0 1 4 39 a26 26 0 0 0 -4 -39z" fill="#8F9DBB"/>
+    <g class="earL"><ellipse cx="27" cy="54" rx="18" ry="22" fill="#8C9ABA"/><ellipse cx="29" cy="55" rx="11" ry="15" fill="#F0A897"/></g>
+    <g class="trunk"><path d="M56 64 C 54 80, 60 92, 74 88" fill="none" stroke="#9EACC8" stroke-width="13" stroke-linecap="round"/>
+      <path d="M50 74 q6 2 12 0 M53 82 q6 2 11 -1" fill="none" stroke="#8492B1" stroke-width="1.6" stroke-linecap="round"/></g>
+    <path d="M66 67 q4 4 8 0" fill="none" stroke="#5B4A55" stroke-width="2" stroke-linecap="round"/>
+    <ellipse cx="47" cy="50" rx="4" ry="5" fill="#231A14"/><ellipse cx="67" cy="50" rx="4" ry="5" fill="#231A14"/>
+    <circle cx="48.6" cy="48" r="1.5" fill="#fff"/><circle cx="68.6" cy="48" r="1.5" fill="#fff"/>
+    <g class="lids"><ellipse cx="47" cy="50" rx="5.2" ry="6.2" fill="#9EACC8"/><ellipse cx="67" cy="50" rx="5.2" ry="6.2" fill="#9EACC8"/></g>
+    <ellipse cx="39" cy="61" rx="5" ry="3.2" fill="#F0A897" opacity=".85"/><ellipse cx="76" cy="60" rx="4.5" ry="3" fill="#F0A897" opacity=".85"/>
+    <g><ellipse cx="58" cy="28" rx="30" ry="7.5" fill="#D9822B"/><path d="M36 28 C 37 11, 79 11, 80 28 Z" fill="#E9963A"/><rect x="37" y="21" width="42" height="5" rx="2" fill="#B8482A"/></g>`;
+  if (kind === 'head') {
+    return `<svg class="laddoo" viewBox="8 8 104 92" width="100%" aria-label="Laddoo"><g class="bob">${head}</g></svg>`;
+  }
+  return `<svg class="laddoo" viewBox="0 0 120 130" width="100%" aria-label="Laddoo the elephant">
+    <ellipse cx="60" cy="123" rx="32" ry="5" fill="#2b1a10" opacity=".18"/>
+    <g class="bob">
+      <rect x="74" y="64" width="24" height="32" rx="8" fill="#B8482A"/><rect x="74" y="64" width="24" height="12" rx="6" fill="#9C3B22"/>
+      <rect x="64" y="96" width="16" height="24" rx="7" fill="#7D89A6"/>
+      <ellipse cx="56" cy="92" rx="28" ry="24" fill="#94A2C0"/>
+      <ellipse cx="66" cy="98" rx="16" ry="16" fill="#8695B5" opacity=".6"/>
+      <rect x="38" y="98" width="17" height="23" rx="7" fill="#9EACC8"/>
+      <g fill="#EFE3D3"><circle cx="42" cy="119" r="2"/><circle cx="46.5" cy="120" r="2"/><circle cx="51" cy="119" r="2"/></g>
+      <path d="M72 70 L60 100" stroke="#9C3B22" stroke-width="5" stroke-linecap="round"/>
+      ${head}
+    </g></svg>`;
+}
+
+// Bottom nav, shared by Today and Memory.
+const navItems = [
+  ['Today', '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>'],
+  ['Explore', '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/>'],
+  ['Laddoo', '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>'],
+  ['Passport', '<rect x="5" y="3" width="14" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M9 16h6"/>'],
+  ['Me', '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'],
+];
+document.querySelectorAll('[data-nav]').forEach(nav => {
+  const on = +nav.dataset.nav;
+  nav.innerHTML = navItems.map(([label, d], i) => `<div class="${i === on ? 'on' : ''}"><svg viewBox="0 0 24 24" fill="${i === on ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>${label}</div>`).join('');
+});
+
+// The day: stops from near (done) to far (sunset on the hill).
+const stops = [
+  { name: 'Amber Fort', icon: '🏰', x: 72, y: 342, r: 20, time: '10:00 AM', pts: 60 },
+  { name: 'Pyaaz kachori at Rawat', icon: '🥟', x: 205, y: 312, r: 21, time: '1:00 PM', dist: '1.2 km', meta: '🛺 8 min by auto · ₹40 · open till 10 PM', pts: 25,
+    memory: 'You loved the <em>mirchi vada in Jodhpur</em> last March. This is its Jaipur cousin. Go before 2, they sell out.' },
+  { name: 'Hawa Mahal', icon: '🏯', x: 120, y: 272, r: 17, time: '1:45 PM', dist: '900 m', meta: '🚶 Walk 12 min · ₹200 entry · cool inside', pts: 40,
+    memory: "It's 36°C outside. You'll be in the shade here, and the <em>quiet top-floor windows</em> are the photo spot you like." },
+  { name: 'Johari Bazaar', icon: '🛍️', x: 222, y: 240, r: 14, time: '3:30 PM', dist: '2 km', meta: '🛺 Auto 10 min · ₹60–80', pts: 30,
+    memory: 'Priya wanted block-print scarves. Start at <em>half the first price</em>; the shops near the Ganesh temple are fairest.' },
+  { name: 'Sunset at Nahargarh', icon: '🌇', x: 158, y: 202, r: 12, time: '6:10 PM', dist: '9 km', meta: '🚕 Cab 35 min · ₹350–450', pts: 60,
+    memory: 'Your favorite thing, every trip. I booked you time for <em>the rooftop café</em> after, not the crowded fort wall.' },
+];
+let current = 1, total = 1240;
+const NS = 'http://www.w3.org/2000/svg';
+const nodesG = document.getElementById('nodes');
+
+function drawNodes() {
+  nodesG.innerHTML = '';
+  stops.forEach((s, i) => {
+    const g = document.createElementNS(NS, 'g');
+    const done = i < current, now = i === current;
+    const base = done ? '#14100c' : now ? '#9C3B22' : '#D7B48F';
+    const face = done ? '#231A14' : now ? '#B8482A' : '#FCE6CD';
+    g.innerHTML = `
+      ${now ? `<circle cx="${s.x}" cy="${s.y}" r="${s.r + 4}" fill="none" stroke="#FCE6CD" stroke-width="3"><animate attributeName="r" values="${s.r + 3};${s.r + 12}" dur="1.6s" repeatCount="indefinite"/><animate attributeName="opacity" values=".9;0" dur="1.6s" repeatCount="indefinite"/></circle>` : ''}
+      <ellipse cx="${s.x}" cy="${s.y + s.r * 0.22}" rx="${s.r}" ry="${s.r}" fill="${base}"/>
+      <circle cx="${s.x}" cy="${s.y}" r="${s.r}" fill="${face}" stroke="${now ? '#FCE6CD' : 'none'}" stroke-width="3"/>
+      <text x="${s.x}" y="${s.y + s.r * 0.36}" text-anchor="middle" font-size="${s.r * 1.05}" ${done ? 'opacity=".55"' : ''}>${s.icon}</text>
+      ${done ? `<circle cx="${s.x + s.r * .72}" cy="${s.y - s.r * .72}" r="${Math.max(7, s.r * .38)}" fill="#3F7A4E" stroke="#FCE6CD" stroke-width="2"/><path d="M${s.x + s.r * .72 - 3.5} ${s.y - s.r * .72} l2.5 2.5 l4.5 -5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>` : ''}`;
+    nodesG.appendChild(g);
+  });
+}
+
+const pm = document.getElementById('pathMascot');
+function placeMascot() {
+  const s = stops[Math.min(current, stops.length - 1)];
+  const size = s.r * 2.7;
+  const right = s.x > 170;
+  pm.style.width = size + 'px';
+  pm.style.left = (right ? s.x - s.r * 0.5 - size : s.x + s.r * 0.5) + 'px';
+  pm.style.top = (s.y - size * 0.86) + 'px';
+}
+
+function renderNow() {
+  const card = document.getElementById('nowCard');
+  card.classList.remove('swap'); void card.offsetWidth; card.classList.add('swap');
+  if (current >= stops.length) {
+    card.innerHTML = `<div class="now-top"><span class="when" style="color:#3F7A4E">Day 2 complete</span><span class="pts"><span class="coin"></span>+215 pts</span></div>
+      <h2>5 stops, 2 new dishes, 1 sunset</h2><div class="meta">Tomorrow: Udaipur by train at 9:40 AM. Not before 8, as always.</div>
+      <div class="memory"><div class="face">${laddoo('head')}</div><div>I'll remember you liked Hawa Mahal more than the fort. Fewer forts in Udaipur, more lakes.</div></div>
+      <div class="actions"><button class="pill-btn ink" id="checkIn">See today's recap</button></div>`;
+  } else {
+    const s = stops[current];
+    card.innerHTML = `<div class="now-top"><span class="when"><i></i>Now · ${s.dist}</span><span class="pts"><span class="coin"></span>+${s.pts} pts</span></div>
+      <h2>${s.name}</h2><div class="meta">${s.meta}</div>
+      <div class="memory"><div class="face">${laddoo('head')}</div><div>${s.memory}</div></div>
+      <div class="actions"><button class="pill-btn ink" id="checkIn">I'm here</button>
+        <button class="icon-btn" aria-label="Directions"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#231A14" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-8-8 18-2-8z"/></svg></button></div>`;
+  }
+  document.getElementById('checkIn').addEventListener('click', checkIn);
+}
+
+function renderLater() {
+  const rest = stops.slice(current + 1);
+  document.getElementById('later').innerHTML = rest.length
+    ? rest.map(s => `<div class="lrow"><div class="tm">${s.time.replace(' PM', '')}</div><div class="rail"></div><div class="tx"><b>${s.name}</b><span>${s.meta.replace(/^\S+\s/, '')}</span></div></div>`).join('')
+    : `<div class="lrow"><div class="tm">—</div><div class="rail"></div><div class="tx"><b>Nothing left today</b><span>Rest up. Laddoo will brief you at 8 AM.</span></div></div>`;
+}
+
+function checkIn() {
+  if (current >= stops.length) { current = 1; total = 1240; }
+  else {
+    const s = stops[current];
+    const f = document.createElement('div');
+    f.className = 'float-pts'; f.textContent = `+${s.pts} pts`;
+    f.style.left = (s.x - 26) + 'px'; f.style.top = (s.y - s.r - 46) + 'px';
+    document.getElementById('hero').appendChild(f);
+    setTimeout(() => f.remove(), 1400);
+    total += s.pts; current++;
+  }
+  document.getElementById('ptsTotal').textContent = total.toLocaleString('en-IN');
+  pm.classList.remove('hop'); void pm.offsetWidth; pm.classList.add('hop');
+  drawNodes(); placeMascot(); renderNow(); renderLater();
+}
+
+// Dish cards and trip cards: small scenes in the same style.
+function miniScene(w, h, top, bottom, hill, id, emoji) {
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+    <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${top}"/><stop offset="1" stop-color="${bottom}"/></linearGradient></defs>
+    <rect width="${w}" height="${h}" fill="url(#${id})"/>
+    <circle cx="${w * .78}" cy="${h * .34}" r="${h * .12}" fill="#FCE6CD" opacity=".7"/>
+    <path d="M0 ${h * .68} C${w * .25} ${h * .52} ${w * .55} ${h * .62} ${w} ${h * .5} V${h} H0Z" fill="${hill}" opacity=".8"/>
+    <path d="M0 ${h * .84} C${w * .35} ${h * .74} ${w * .65} ${h * .88} ${w} ${h * .78} V${h} H0Z" fill="${hill}"/>
+    ${emoji ? `<ellipse cx="${w * .38}" cy="${h * .8}" rx="${w * .23}" ry="${h * .09}" fill="#FCE6CD"/><text x="${w * .38}" y="${h * .78}" text-anchor="middle" font-size="${h * .33}">${emoji}</text>` : ''}
+  </svg>`;
+}
+const dishes = [
+  { name: 'Pyaaz kachori', where: 'Rawat Misthan Bhandar', emoji: '🥟', pts: 25, sky: ['#E9963A', '#F6CDA4'], hill: '#B8482A', got: false },
+  { name: 'Dal baati churma', where: 'Chokhi Dhani', emoji: '🍲', pts: 60, sky: ['#6F8FCB', '#C7D3DA'], hill: '#5F8D63', got: true },
+  { name: 'Ghewar', where: 'LMB, Johari Bazaar', emoji: '🍯', pts: 40, sky: ['#F2B33D', '#FCE6CD'], hill: '#E08A74', got: true },
+  { name: 'Lassi', where: 'Lassiwala, MI Road', emoji: '🥛', pts: 20, sky: ['#3E56A8', '#9AB0C2'], hill: '#3F7A4E', got: false },
+];
+document.getElementById('dishes').innerHTML = dishes.map((d, i) => `
+  <div class="dish ${d.got ? 'got' : ''}"><div class="art">${miniScene(150, 110, d.sky[0], d.sky[1], d.hill, 'dg' + i, d.emoji)}
+    <span class="pts"><span class="coin"></span>${d.pts}</span></div><b>${d.name}</b><span>${d.where}</span></div>`).join('');
+
+const trips = [
+  { city: 'Jaipur', when: 'Now · Day 2', sky: ['#6F8FCB', '#F6CDA4'], hill: '#E08A74' },
+  { city: 'Jodhpur', when: 'Mar 2026 · 12 stamps', sky: ['#3E56A8', '#9AB0C2'], hill: '#5A7FC4' },
+  { city: 'Goa', when: 'Dec 2025 · 9 stamps', sky: ['#F2B33D', '#FCE6CD'], hill: '#3F7A4E' },
+];
+document.getElementById('trips').innerHTML = trips.map((t, i) => `
+  <div class="trip">${miniScene(128, 76, t.sky[0], t.sky[1], t.hill, 'tg' + i)}<div><b>${t.city}</b>${t.when}</div></div>`).join('');
+
+document.querySelectorAll('[data-laddoo]').forEach(el => el.innerHTML = laddoo(el.dataset.laddoo));
+drawNodes(); placeMascot(); renderNow(); renderLater();
+</script>
+</body>
+</html>
