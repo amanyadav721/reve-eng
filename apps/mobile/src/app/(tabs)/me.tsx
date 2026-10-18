@@ -1,3 +1,4 @@
+import { useClerk, useUser } from '@clerk/expo';
 import type { Memory } from '@tagalong/shared';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
@@ -7,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Laddoo } from '@/components/Laddoo';
 import { MiniScene } from '@/components/MiniScene';
+import { PillButton } from '@/components/PillButton';
 import { Txt } from '@/components/Txt';
 import { aboutYou, companions, learnedThisWeek, loves, skips, trips } from '@/data/mock';
 import { palette } from '@/theme/colors';
@@ -22,6 +24,8 @@ const month = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { month
 /** "What Laddoo remembers": every memory, where it came from, and a way to forget it. */
 export default function Me() {
   const insets = useSafeAreaInsets();
+  const { user } = useUser();
+  const { signOut } = useClerk();
   const [facts, setFacts] = useState(aboutYou);
   const [people, setPeople] = useState(companions);
   const [learnedUndone, setLearnedUndone] = useState(false);
@@ -110,6 +114,23 @@ export default function Me() {
               </View>
             ))}
           </ScrollView>
+
+          <Section title="Account" />
+          <Card>
+            <View style={[styles.row, { justifyContent: 'space-between' }]}>
+              <View style={{ flex: 1 }}>
+                <Txt size={14} weight="semibold">
+                  {user?.fullName || user?.primaryEmailAddress?.emailAddress || 'Signed in'}
+                </Txt>
+                {user?.fullName && user.primaryEmailAddress && (
+                  <Txt size={11.5} color={palette.cocoa}>
+                    {user.primaryEmailAddress.emailAddress}
+                  </Txt>
+                )}
+              </View>
+            </View>
+          </Card>
+          <PillButton variant="chip" label="Sign out" onPress={() => signOut()} style={{ marginTop: 12 }} />
         </View>
       </ScrollView>
     </View>

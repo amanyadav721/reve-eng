@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { z } from 'zod';
 
@@ -66,6 +67,17 @@ const fareQuery = z.object({
 export const app = new Hono<AuthVars>();
 
 if (env.NODE_ENV !== 'test') app.use(logger());
+
+// The web build of the app calls us from another origin. Phones don't need CORS.
+app.use(
+  '*',
+  cors({
+    origin: env.CORS_ORIGINS.split(',').map((o) => o.trim()),
+    allowHeaders: ['authorization', 'content-type'],
+    allowMethods: ['GET', 'POST', 'OPTIONS'],
+    maxAge: 600,
+  }),
+);
 
 app.get('/health', (c) =>
   c.json({

@@ -1,3 +1,4 @@
+import { useAuth } from '@clerk/expo';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
@@ -13,6 +14,7 @@ import { palette } from '@/theme/colors';
 export default function Welcome() {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const { isSignedIn } = useAuth();
   const k = width / 340;
 
   return (
@@ -55,7 +57,7 @@ export default function Welcome() {
       </View>
 
       <View style={[styles.cta, { bottom: Math.max(insets.bottom, 16) + 20 }]}>
-        <PillButton variant="cream" label="Plan my first trip" onPress={() => router.replace('/today')} />
+        <PillButton variant="cream" label={isSignedIn ? 'Continue my trip' : 'Plan my first trip'} onPress={() => router.replace(isSignedIn ? '/today' : '/sign-in')} />
       </View>
     </View>
   );

@@ -20,6 +20,8 @@ const schema = z.object({
   /** Where routes come from: our own Valhalla server or Google. Default: google if keyed, else valhalla. */
   ROUTES_PROVIDER: z.enum(['valhalla', 'google']).optional(),
   VALHALLA_URL: z.string().url().default('http://localhost:8002'),
+  /** Web app origins allowed to call the API, comma-separated. */
+  CORS_ORIGINS: z.string().default('http://localhost:8081,http://localhost:19006'),
   TAVILY_API_KEY: z.string().optional(),
   OPENWEATHER_API_KEY: z.string().optional(),
 });
