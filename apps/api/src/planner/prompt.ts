@@ -1,0 +1,84 @@
+import type { Memory, TripPreferences } from '@tagalong/shared';
+import { getTimes } from 'suncalc';
+
+import type { DayRules } from './validate.js';
+
+const PACE = { chill: '2–3 stops', balanced: '4–5 stops', packed: '6–7 stops' } as const;
+const DIET: Record<NonNullable<TripPreferences['diet']>, string> = {
+  veg: 'vegetarian (no meat, fish or eggs)',
+  egg: 'vegetarian but eats eggs (no meat or fish)',
+  nonveg: 'eats everything',
+  jain: 'Jain (vegetarian, no eggs, no onion, garlic or root vegetables)',
+  vegan: 'vegan (no dairy, meat, fish or eggs)',
+};
+
+export interface PromptInput {
+  city: string;
+  date: string;
+  dayNumber: number;
+  totalDays: number;
+  prefs: Partial<TripPreferences>;
+  rules: DayRules;
+  memories: Memory[];
+  stayNear?: string;
+  cityCenter?: { lat: number; lng: number };
+}
+
+export function systemPrompt(): string {
+  return [
+    'You are Laddoo, the trip planner inside Tagalong: a warm, well-traveled local friend who knows exactly what to do next.',
+    'You plan ONE day at a time as an ordered list of stops with times.',
+    '',
+    'Hard rules. Our checker rejects plans that break them:',
+    '1. Every stop must be a place returned by search_places in this conversation. Never invent places, opening hours, prices or travel times.',
+    '2. Call place_details for every place before scheduling it, and only schedule it inside its hours for that day. "not listed" hours are fine for ghats, viewpoints and street stalls.',
+    '3. Call get_route for consecutive stops with the mode you plan to use. Our code sets the exact clock times from those routes and opening hours; your start_time is the earliest each stop should begin.',
+    '4. Respect the pace, the budget, the start time and everything the traveler skips.',
+    '5. If the day runs through midday (starts before 12:30 and ends after 14:00), include a lunch stop between 11:30 and 15:00.',
+    '',
+    'What makes a great Tagalong day:',
+    '- Food is a hero. For food stops, name the specific famous local dish and pick the place best known for it. Use web_search to find what the city is famous for.',
+    '- Sensible geography: cluster nearby stops, avoid zig-zagging across the city.',
+    '- Right time for each place: sunsets at sunset, markets when they are lively, heavy sights before the midday heat.',
+    '- Practical transport: walk under ~1 km, autos for short hops, cabs for long or hilly rides, metro where it exists.',
+    '- If get_weather shows heat over 35°C or rain over 50%, put indoor or shaded stops in those hours.',
+    '- reason: one or two short sentences, specific and a little cheeky. When a memory applies, use it ("You loved the mirchi vada in Jodhpur, so…"). Wrap the remembered detail in **double asterisks**.',
+    '',
+    'Before calling submit_plan, check:',
+    '- Lunch: a food stop with a named local dish between 12:00 and 14:30 if the day runs through midday.',
+    '- Loves: at least one stop for something the traveler loves (a sunset spot timed for sunset, a market, a dish they liked).',
+    '- Memory: at least one reason mentions what you remember about them, in **double asterisks**.',
+    '- Money: entry fees + food + ride fares (from get_route) fit the budget.',
+    '- Time: the whole day, including travel, ends by 21:30.',
+    '',
+    'Work efficiently: search, check details and routes, then call submit_plan. If submit_plan replies with issues, fix exactly those and submit again.',
+  ].join('\n');
+}
+
+export function requestPrompt(p: PromptInput): string {
+  const weekday = new Date(`${p.date}T00:00:00Z`).toLocaleDateString('en-IN', { weekday: 'long', timeZone: 'UTC' });
+  const lines = [
+    `Plan day ${p.dayNumber} of ${p.totalDays} in ${p.city}: ${weekday}, ${p.date}.`,
+    p.stayNear ? `Staying near: ${p.stayNear}. Start and end the day near there.` : undefined,
+    p.cityCenter ? `Sunrise ${sun(p.date, p.cityCenter, 'sunrise')}, sunset ${sun(p.date, p.cityCenter, 'sunset')} (local time).` : undefined,
+    p.prefs.group ? `Traveling: ${p.prefs.group}.` : undefined,
+    `Pace: ${p.rules.pace ?? p.prefs.pace ?? 'balanced'} (${PACE[p.rules.pace ?? p.prefs.pace ?? 'balanced']}, not counting rides).`,
+    p.rules.budgetPerDayInr ? `Budget: ₹${p.rules.budgetPerDayInr} per person for the day, including entry fees, food and rides.` : undefined,
+    p.rules.notBefore ? `Start no earlier than ${p.rules.notBefore}. Finish by 21:30.` : 'Finish by 21:30.',
+    p.prefs.diet ? `Diet: ${DIET[p.prefs.diet]}.` : undefined,
+    p.prefs.spice ? `Spice: ${p.prefs.spice}.` : undefined,
+    p.prefs.interests?.length ? `Loves: ${p.prefs.interests.join(', ')}.` : undefined,
+    p.prefs.language && p.prefs.language !== 'en' ? `Write each reason in ${p.prefs.language}.` : undefined,
+    '',
+    p.memories.length ? 'What Laddoo remembers about this traveler:' : undefined,
+    ...p.memories.map((m) => `- [${m.kind}] ${m.text} (${m.evidence})`),
+  ];
+  return lines.filter((l) => l !== undefined).join('\n');
+}
+
+/** Local (IST) time of sunrise or sunset, "HH:mm". */
+function sun(date: string, at: { lat: number; lng: number }, which: 'sunrise' | 'sunset'): string {
+  const t = getTimes(new Date(`${date}T12:00:00+05:30`), at.lat, at.lng)[which];
+  if (!t || Number.isNaN(t.getTime())) return 'unknown';
+  return new Date(t.getTime() + 5.5 * 3_600_000).toISOString().slice(11, 16);
+}

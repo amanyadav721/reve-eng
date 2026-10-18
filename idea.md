@@ -158,7 +158,7 @@ Memory is what makes the app personal, and the brand promise. Generic planners s
 
 ## Design principles
 
-Reference: [design/ui-direction.html](design/ui-direction.html). Open it in a browser and tap I'm here on the Today screen. Tokens: [design/colors.ts](design/colors.ts).
+Reference: [design/ui-direction.html](design/ui-direction.html). Open it in a browser and tap I'm here on the Today screen. Tokens: [apps/mobile/src/theme/colors.ts](apps/mobile/src/theme/colors.ts).
 
 - **One thing at a time.** Each screen has one hero and one ink button. On the trail only the current stop is labeled. Today is the scene, the Now card, a quiet "Later today" timeline, and your food list. Nothing else.
 - **The day is a game path through the city.** Each city is a layered, flat illustration of its skyline. The day's stops sit on a trail that winds from the foreground (done) to the horizon (tonight). Check in and Laddoo walks to the next stop.
@@ -182,7 +182,7 @@ Reference: [design/ui-direction.html](design/ui-direction.html). Open it in a br
 | Motion | Reanimated 4 (+ Moti), Skia for effects, Rive for Laddoo, Lottie for one-off clips | GSAP doesn't run in React Native; it's only for a future marketing site. |
 | Feedback | `expo-haptics`, `expo-audio` | |
 | Location | `expo-location` (foreground), `expo-task-manager` later | |
-| Maps | Mapbox (`@rnmapbox/maps`) | Same branded map style on both platforms. Fallback: `react-native-maps` with Google. |
+| Maps | MapLibre (`@maplibre/maplibre-react-native`, `maplibre-gl` on web) with OpenStreetMap tiles from OpenFreeMap | Our own Golden hour style, no Google and no per-request fees. Self-host tiles and run our own router (Valhalla or OSRM) as we grow. |
 
 ## AI architecture (summary)
 

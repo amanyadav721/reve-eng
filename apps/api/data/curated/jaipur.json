@@ -1,0 +1,15 @@
+{
+  "note": "What famous Jaipur eateries are known for, so the planner can find 'pyaaz kachori' without Google. Draft from widely published guides: verify each entry on the ground before launch. Never add opening hours here unless someone has checked them.",
+  "places": [
+    { "name": "Rawat Mishthan Bhandar", "knownFor": ["pyaaz kachori", "mawa kachori", "kachori", "mirchi vada"], "verified": false },
+    { "name": "Laxmi Mishthan Bhandar", "aka": ["LMB"], "knownFor": ["ghewar", "rajasthani thali", "sweets", "dal baati churma"], "verified": false },
+    { "name": "Lassiwala", "knownFor": ["lassi"], "verified": false },
+    { "name": "Chokhi Dhani", "knownFor": ["dal baati churma", "rajasthani thali", "folk dance", "village dinner"], "verified": false },
+    { "name": "Masala Chowk", "knownFor": ["street food", "chaat", "kachori", "food court"], "verified": false },
+    { "name": "Tapri Central", "knownFor": ["chai", "rooftop cafe", "snacks"], "verified": false },
+    { "name": "Gulab Ji Chai", "aka": ["Gulab Ji Chai Wala"], "knownFor": ["chai", "bun maska"], "verified": false },
+    { "name": "Pandit Kulfi", "knownFor": ["kulfi", "dessert"], "verified": false },
+    { "name": "Handi", "knownFor": ["laal maas", "rajasthani non-veg", "kebabs"], "verified": false },
+    { "name": "Niro's", "knownFor": ["north indian", "classic restaurant"], "verified": false }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "Tagalong",
+    "slug": "tagalong",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.tagalong"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#F7CFAA",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "app.tagalong"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "scheme": "tagalong",
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-font",
+      "expo-splash-screen",
+      "@maplibre/maplibre-react-native"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

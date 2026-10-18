@@ -1,0 +1,21 @@
+# Our own routing server: Valhalla on OpenStreetMap roads (Geofabrik "northern zone": Rajasthan,
+# Delhi, Punjab, Haryana, HP, J&K). Car ("auto"), scooter and walking in one server.
+#   docker-compose -f infra/valhalla/docker-compose.yml up -d   (or "docker compose" with the plugin)
+# First start downloads the extract (~214 MB) and builds routing tiles (several minutes).
+# The API reaches it at VALHALLA_URL=http://localhost:8002.
+services:
+  valhalla:
+    image: ghcr.io/valhalla/valhalla-scripted:latest
+    container_name: tagalong-valhalla
+    ports:
+      - "8002:8002"
+    volumes:
+      - ../../.data/valhalla:/custom_files
+    environment:
+      - tile_urls=https://download.geofabrik.de/asia/india/northern-zone-latest.osm.pbf
+      - serve_tiles=True
+      - build_admins=True
+      - build_time_zones=True
+      - build_elevation=False
+      - server_threads=4
+    restart: unless-stopped

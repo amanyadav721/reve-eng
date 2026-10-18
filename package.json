@@ -1,0 +1,19 @@
+{
+  "name": "tagalong",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "mobile": "npm run start -w mobile",
+    "web": "npm run web -w mobile",
+    "api": "npm run dev -w api",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm test -w api && npm run test:db",
+    "test:db": "./scripts/test-db.sh"
+  }
+}

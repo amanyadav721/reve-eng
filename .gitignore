@@ -1,0 +1,10 @@
+node_modules/
+.DS_Store
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+dist/
+apps/api/evals/results/
+.data/
+apps/api/data/places/

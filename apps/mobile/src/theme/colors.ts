@@ -1,6 +1,6 @@
 // Color tokens for the app ("Golden hour"). Import from here; never hard-code hex values in screens.
 // Contrast ratios (WCAG 2.1) are noted where a color carries text. 4.5 is the minimum for body text.
-// Preview: design/ui-direction.html
+// Preview: design/ui-direction.html (keep the two in sync)
 
 export const palette = {
   // UI surfaces: calm, warm, paper-like
