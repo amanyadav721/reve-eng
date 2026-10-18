@@ -1,7 +1,7 @@
 import type { Memory, Stop, TripPreferences } from '@tagalong/shared';
 
 import { countryProfile } from '../places/countries.js';
-import { momentStarts, requiredMoments, sunTime } from './moments.js';
+import { momentStarts, requiredMoments, sunTime, type Moment } from './moments.js';
 
 import type { LatLng } from '../providers/types.js';
 import type { ChatMessage, ChatRequest, ChatResponse } from '../sarvam.js';
@@ -9,7 +9,7 @@ import { requestPrompt, systemPrompt } from './prompt.js';
 import { submitPlanArgs } from './schema.js';
 import { PlannerSession, type Providers } from './session.js';
 import { plannerTools } from './tools.js';
-import type { DayRules, Issue } from './validate.js';
+import { isLunch, type DayRules, type Issue } from './validate.js';
 
 // The planning loop: the model calls tools, then submit_plan. Our code turns the submission into
 // stops from real data and validates it. Rejections go back to the model as the tool result.
@@ -29,6 +29,25 @@ export interface PlanDayInput {
   country?: string;
   /** IANA zone of the city. Default Asia/Kolkata. */
   timeZone?: string;
+  /** Re-planning the rest of today instead of a whole day. */
+  replan?: ReplanContext;
+}
+
+export interface ReplanContext {
+  /** Where the traveler is now; the rest of the day starts here. */
+  origin: { lat: number; lng: number };
+  /** Local "HH:mm" now. */
+  now: string;
+  /** What changed, for the model: "It's raining now", "They're bored with the plan". */
+  instruction: string;
+  /** Stops already done today (kept, never repeated). */
+  done: Stop[];
+  /** What was still planned, as a starting point the model may keep or replace. */
+  remaining: Stop[];
+  /** It's raining: outdoor stops are rejected. */
+  indoors?: boolean;
+  /** Moments that no longer apply today (no sunset to see in the rain). */
+  dropMoments?: Moment[];
 }
 
 export interface PlanDayDeps extends Providers {
@@ -72,7 +91,15 @@ export async function planDay(input: PlanDayInput, deps: PlanDayDeps, opts: Plan
   const sunrise = sunTime(input.date, input.cityCenter, 'sunrise', timeZone);
   const sunset = sunTime(input.date, input.cityCenter, 'sunset', timeZone);
   const starts = momentStarts(sunrise, sunset);
-  const mustHave = requiredMoments(input.memories ?? [], input.prefs?.interests, input.city).filter((m) => starts[m] !== undefined);
+  const replan = input.replan;
+  const nowMin = replan ? Number(replan.now.slice(0, 2)) * 60 + Number(replan.now.slice(3, 5)) : 0;
+  const doneMoments = new Set(replan?.done.map((s) => s.moment).filter(Boolean));
+  // Re-planning: only moments still ahead and not already enjoyed today.
+  const mustHave = requiredMoments(input.memories ?? [], input.prefs?.interests, input.city).filter(
+    (m) => starts[m] !== undefined && !doneMoments.has(m) && !replan?.dropMoments?.includes(m) && (!replan || starts[m]! + 15 >= nowMin),
+  );
+  if (replan) rules.notBefore = replan.now;
+  const lunchDone = replan ? replan.done.some((s) => isLunch(s)) || nowMin > 14 * 60 + 30 : undefined;
   // Every day gets a meal; food lovers get more.
   const pace = rules.pace ?? 'balanced';
   rules.minFoodStops ??= isFoodie(input.prefs?.interests, input.memories) ? { chill: 2, balanced: 2, packed: 3 }[pace] : 1;
@@ -82,13 +109,18 @@ export async function planDay(input: PlanDayInput, deps: PlanDayDeps, opts: Plan
     date: input.date,
     rules,
     memories: input.memories ?? [],
-    avoidPlaceIds: input.avoidPlaceIds,
     diet: input.prefs?.diet,
     country: country.code,
     currency,
     modes: country.modes,
     momentStarts: starts,
     mustHave,
+    origin: replan?.origin,
+    partial: !!replan,
+    indoors: replan?.indoors,
+    fillGaps: !!replan,
+    lunchDone,
+    avoidPlaceIds: [...(input.avoidPlaceIds ?? []), ...(replan?.done.map((s) => s.placeId).filter((x): x is string => !!x) ?? [])],
   });
 
   const messages: ChatMessage[] = [
@@ -109,7 +141,14 @@ export async function planDay(input: PlanDayInput, deps: PlanDayDeps, opts: Plan
         timeZone,
         modes: country.modes.map((mode) => ({ mode, name: country.modeNames?.[mode] })),
         mustHave,
-        foodStops: rules.minFoodStops,
+        foodStops: replan ? undefined : rules.minFoodStops,
+        replan: replan && {
+          now: replan.now,
+          instruction: replan.instruction,
+          done: replan.done.map((s) => s.name),
+          remaining: replan.remaining.map((s) => `${s.startTime} ${s.name} (${s.category})`),
+          lunchDone: !!lunchDone,
+        },
       }),
     },
   ];
@@ -227,6 +266,8 @@ const FIX: Record<Issue['code'], string> = {
   too_few_food_stops: 'Add food stops with named dishes: famous local dishes at the places known for them.',
   missing_moment: 'Add a stop for it with timed_for set; our code starts it at the right time.',
   missed_moment: 'Drop or shorten an earlier stop, or pick closer places, so the traveler gets there in time.',
+  long_gap: 'Add a stop nearby to fill the free time (keep meals), or move the next stop earlier if it allows.',
+  outdoors_in_rain: 'Replace it with an indoor place nearby: a museum, palace interior, café, covered market or temple.',
   memory_unused: 'Rewrite one or two reasons to use a specific memory, wrapping the remembered detail in **double asterisks**.',
 };
 

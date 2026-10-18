@@ -33,7 +33,8 @@ export function schedule(stops: Stop[], facts: Record<string, PlaceFacts>, opts:
   const out = stops.map((s) => {
     if (s.status === 'skipped') return s;
     const hint = toMin(s.startTime);
-    const earliest = prevEnd === undefined ? Math.max(hint, opts.notBefore ? toMin(opts.notBefore) : 0) : prevEnd + (s.hop?.minutes ?? 0);
+    // The first stop only has a hop when re-planning: the ride from where the traveler is now.
+    const earliest = prevEnd === undefined ? Math.max(hint, (opts.notBefore ? toMin(opts.notBefore) : 0) + (s.hop?.minutes ?? 0)) : prevEnd + (s.hop?.minutes ?? 0);
     const pinned = s.moment ? opts.momentStarts?.[s.moment] : undefined;
 
     let start: number;

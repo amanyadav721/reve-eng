@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
+import type { Stop } from '@tagalong/shared';
 import { z } from 'zod';
 
 import { requireUser, type AuthVars } from './auth.js';
@@ -11,6 +12,7 @@ import { cityCenter, plannerDeps } from './planner/deps.js';
 import { estimateFare } from './planner/fare.js';
 import { outlineTrip } from './planner/outline.js';
 import { planDay } from './planner/planDay.js';
+import { replanDay } from './planner/replan.js';
 import { chat } from './sarvam.js';
 
 const tripPreferences = z.object({
@@ -47,6 +49,38 @@ const planDayBody = z.object({
   avoidPlaceIds: z.array(z.string()).max(100).default([]),
   notBefore: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   stayNear: z.string().max(200).optional(),
+});
+
+const hhmm = z.string().regex(/^\d{2}:\d{2}$/);
+const latLng = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) });
+
+/** A stop as the app has it. Extra fields (hop, reason, points…) pass through untouched. */
+const stop = z.looseObject({
+  id: z.string().max(100),
+  placeId: z.string().max(200).optional(),
+  name: z.string().max(200),
+  location: latLng.optional(),
+  category: z.enum(['food', 'sight', 'transport', 'nature', 'culture', 'shopping']),
+  icon: z.string().max(20).default(''),
+  points: z.number().int().min(0).default(0),
+  startTime: hhmm,
+  durationMin: z.number().int().min(0).max(24 * 60),
+  moment: z.enum(['sunrise', 'sunset', 'evening_aarti']).optional(),
+  status: z.enum(['done', 'now', 'upcoming', 'skipped']),
+});
+
+const replanBody = z.object({
+  preferences: tripPreferences,
+  dayNumber: z.number().int().min(1).max(30).default(1),
+  memories: z.array(memory).max(100).default([]),
+  /** Today's plan with statuses: done stops stay as they are. */
+  stops: z.array(stop).min(1).max(30),
+  now: hhmm,
+  location: latLng,
+  trigger: z.enum(['late', 'skip', 'tired', 'hungry', 'rain', 'bored']),
+  stopId: z.string().max(100).optional(),
+  note: z.string().max(300).optional(),
+  choice: z.string().max(200).optional(),
 });
 
 const outlineBody = z.object({
@@ -125,10 +159,9 @@ v1.post('/trips/plan-day', async (c) => {
   if (dayNumber > totalDays) return c.json({ error: 'bad_request', message: `the trip has ${totalDays} days` }, 400);
   const date = new Date(Date.parse(prefs.startDate) + (dayNumber - 1) * 86_400_000).toISOString().slice(0, 10);
 
-  // Our own database learns a new city the first time someone plans a trip there (about a minute).
-  const area = deps.places instanceof LocalPlaces ? await ensureCity(prefs.city, deps.places) : await cityArea(prefs.city);
-  const center = area?.center ?? (await cityCenter(prefs.city, deps.places));
-  if (!center) return c.json({ error: 'unknown_city', city: prefs.city }, 422);
+  const place = await resolveCity(prefs.city, deps);
+  if (!place) return c.json({ error: 'unknown_city', city: prefs.city }, 422);
+  const { center, area } = place;
   const currency = prefs.currency ?? area?.currency ?? 'INR';
 
   const result = await planDay(
@@ -137,6 +170,34 @@ v1.post('/trips/plan-day', async (c) => {
   );
   return c.json({ date, dayNumber, currency, country: area?.country, timeZone: area?.timeZone, ...result }, result.ok ? 200 : 422);
 });
+
+/** Something changed mid-day (late, rain, hungry, tired, skip, bored): re-plan the rest of today. */
+v1.post('/trips/replan', async (c) => {
+  const body = replanBody.safeParse(await c.req.json().catch(() => undefined));
+  if (!body.success) return c.json({ error: 'bad_request', issues: body.error.issues }, 400);
+  const deps = plannerDeps();
+  if ('missing' in deps) return c.json({ error: 'not_configured', missing: deps.missing }, 503);
+
+  const { preferences: prefs, dayNumber, memories, ...change } = body.data;
+  const date = new Date(Date.parse(prefs.startDate) + (dayNumber - 1) * 86_400_000).toISOString().slice(0, 10);
+  const place = await resolveCity(prefs.city, deps);
+  if (!place) return c.json({ error: 'unknown_city', city: prefs.city }, 422);
+  const { center, area } = place;
+  const currency = prefs.currency ?? area?.currency ?? 'INR';
+
+  const result = await replanDay(
+    { city: prefs.city, cityCenter: center, date, prefs: { ...prefs, currency }, memories, country: area?.country, timeZone: area?.timeZone, ...change, stops: change.stops as unknown as Stop[] },
+    deps,
+  );
+  return c.json({ date, dayNumber, currency, ...result });
+});
+
+/** Our own database learns a new city the first time someone plans a trip there (about a minute). */
+async function resolveCity(city: string, deps: Exclude<ReturnType<typeof plannerDeps>, { missing: string[] }>) {
+  const area = deps.places instanceof LocalPlaces ? await ensureCity(city, deps.places) : await cityArea(city);
+  const center = area?.center ?? (await cityCenter(city, deps.places));
+  return center ? { center, area } : undefined;
+}
 
 app.route('/v1', v1);
 

@@ -43,7 +43,9 @@ export type IssueCode =
   | 'day_too_short'
   | 'too_few_food_stops'
   | 'missing_moment'
-  | 'missed_moment';
+  | 'missed_moment'
+  | 'outdoors_in_rain'
+  | 'long_gap';
 
 export interface Issue {
   code: IssueCode;
@@ -64,6 +66,8 @@ export interface DayRules {
   minFoodStops?: number;
   /** Re-planning: lunch already happened, so don't ask for it. */
   lunchDone?: boolean;
+  /** Re-planning: the traveler's day carries on from this time ("HH:mm"), so lunch may still be due. */
+  activeFrom?: string;
 }
 
 export const MAX_STOPS = { chill: 3, balanced: 5, packed: 7 } as const;
@@ -168,7 +172,7 @@ export function validateDay(stops: Stop[], places: Record<string, PlaceFacts>, r
     issues.push({ code: 'too_late', message: `The day ends at ${fmt(lastEnd(active))}, after ${rules.notAfter ?? '22:00'}.` });
   }
 
-  if (!rules.lunchDone && missingLunch(active)) {
+  if (!rules.lunchDone && missingLunch(active, rules.activeFrom)) {
     issues.push({ code: 'no_lunch', message: 'The day runs through lunch but has no food stop between 11:30 and 15:00.' });
   }
 
@@ -185,10 +189,12 @@ function fmt(min: number): string {
 }
 
 /** True when the day runs through midday with no food stop in the lunch window. */
-export function missingLunch(stops: Stop[]): boolean {
+export function missingLunch(stops: Stop[], activeFrom?: string): boolean {
   const active = stops.filter((s) => s.status !== 'skipped');
   if (!active.length) return false;
-  const spans = toMin(active[0].startTime) < LUNCH.dayStartsBefore && lastEnd(active) > LUNCH.dayEndsAfter;
+  // Re-planning mid-day: they haven't eaten, so lunch is still due until mid-afternoon.
+  const from = activeFrom ? toMin(activeFrom) : toMin(active[0].startTime);
+  const spans = from < (activeFrom ? LUNCH.to - 30 : LUNCH.dayStartsBefore) && lastEnd(active) > LUNCH.dayEndsAfter;
   return spans && !active.some((s) => isLunch(s));
 }
 

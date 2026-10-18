@@ -44,6 +44,12 @@ export interface SessionInput {
   partial?: boolean;
   /** Re-planning: lunch already happened (or it's past lunchtime). */
   lunchDone?: boolean;
+  /** Re-planning in the rain: outdoor stops don't work. */
+  indoors?: boolean;
+  /** Re-planning with the AI: flag long stretches with nothing to do. */
+  fillGaps?: boolean;
+  /** Re-planning: stops the traveler just asked for, which repairs must not drop. */
+  keepIds?: string[];
 }
 
 /** Stand-in place id for "where the traveler is now". */
@@ -288,23 +294,54 @@ export class PlannerSession {
    * Code decides the clock, repairs what it can, and validates what's left. Used for new plans and
    * for re-planning the rest of a day.
    */
-  async settle(input: Stop[], issues: Issue[] = [], repairs: string[] = [], facts: Record<string, PlaceFacts> = {}): Promise<{ stops: Stop[]; issues: Issue[]; repairs: string[] }> {
+  async settle(
+    input: Stop[],
+    issues: Issue[] = [],
+    repairs: string[] = [],
+    facts: Record<string, PlaceFacts> = {},
+  ): Promise<{ stops: Stop[]; issues: Issue[]; repairs: string[]; letGo: Stop[] }> {
     let stops = input;
     for (const s of stops) if (s.placeId && !facts[s.placeId]) facts[s.placeId] = this.factsOf(await this.loadDetails(s.placeId));
     await this.relink(stops, issues);
 
     // ── 2. Code decides the clock, and repairs what it can ──────────────────
     const partial = this.input.partial;
-    const repaired = await repairDay(stops, {
+    const repair = (list: Stop[]) => repairDay(list, {
       pace: partial ? undefined : this.input.rules.pace,
       minFoodStops: partial ? 0 : (this.input.rules.minFoodStops ?? 1),
       lunchDone: this.input.lunchDone,
       lunchAtStart: !!this.input.origin,
+      activeFrom: partial ? this.input.rules.notBefore : undefined,
+      keep: new Set(this.input.keepIds),
       notAfter: this.input.rules.notAfter ?? '22:00',
       schedule: (list) => schedule(list, facts, { notBefore: this.input.rules.notBefore, momentStarts: this.input.momentStarts }),
       relink: (list) => this.relink(list),
       findLunch: (list, at) => this.findLunch(list, at, facts),
     });
+    let repaired = await repair(stops);
+
+    // Re-planning mid-day, some things are out of reach now. Let them go rather than send the
+    // traveler to a sunset after dark or a palace after closing. Repairs already tried dropping
+    // other stops, so what's still missed can't be saved.
+    const letGo: Stop[] = [];
+    for (let n = 0; partial && n < 4; n++) {
+      const missed = repaired.missed[0];
+      const moment = missed && repaired.stops.find((s) => s.id === missed.stopId);
+      const shut = moment ? undefined : repaired.stops.find((s) => !s.moment && !this.input.keepIds?.includes(s.id) && closedOnArrival(s, facts));
+      const victim = moment ?? shut;
+      if (!victim) break;
+      letGo.push(victim);
+      if (victim.moment) {
+        this.input.mustHave = this.input.mustHave?.filter((m) => m !== victim.moment);
+        repairs.push(`Let go of ${victim.name}: we can't get there in time for the ${momentLabel(victim.moment)}.`);
+      } else {
+        const close = closingTime(victim, facts);
+        repairs.push(`Took off ${victim.name}: it ${close ? `closes at ${close}` : 'is closed'} before you'd get there.`);
+      }
+      const remaining = stops.filter((s) => !letGo.some((l) => l.id === s.id));
+      await this.relink(remaining);
+      repaired = await repair(remaining);
+    }
     stops = repaired.stops;
     repairs.push(...repaired.repairs);
 
@@ -318,12 +355,34 @@ export class PlannerSession {
         issues.push({ code: 'missing_moment', message: `They love ${momentLabel(want)}, but no stop is tagged timed_for "${want}"${at !== undefined ? ` (it starts around ${String(Math.floor(at / 60)).padStart(2, '0')}:${String(at % 60).padStart(2, '0')})` : ''}.` });
       }
     }
-    issues.push(...validateDay(stops, facts, partial ? { ...this.input.rules, pace: undefined, minFoodStops: undefined, budgetPerDay: undefined, lunchDone: this.input.lunchDone } : this.input.rules));
+    if (this.input.fillGaps) {
+      let free = this.input.rules.notBefore ? toMinutes(this.input.rules.notBefore) : undefined;
+      for (const st of stops) {
+        const leave = toMinutes(st.startTime) - (st.hop?.minutes ?? 0);
+        if (free !== undefined && leave - free > MAX_GAP_MIN) {
+          issues.push({ code: 'long_gap', stopId: st.id, message: `Nothing planned for ${Math.round((leave - free) / 30) / 2} hours before "${st.name}".` });
+        }
+        free = toMinutes(st.startTime) + st.durationMin;
+      }
+    }
+    if (this.input.indoors) {
+      for (const s of stops) {
+        if (this.isOutdoors(s)) issues.push({ code: 'outdoors_in_rain', stopId: s.id, message: `"${s.name}" is outdoors, and it's raining.` });
+      }
+    }
+    issues.push(...validateDay(stops, facts, partial ? { ...this.input.rules, pace: undefined, minFoodStops: undefined, budgetPerDay: undefined, lunchDone: this.input.lunchDone, activeFrom: this.input.rules.notBefore } : this.input.rules));
     // The product promise: Laddoo remembers, and shows it.
     if (!partial && this.input.memories.length && !stops.some((s) => s.reason?.includes('**'))) {
       issues.push({ code: 'memory_unused', message: 'No reason uses what we remember about the traveler.' });
     }
-    return { stops, issues, repairs };
+    return { stops, issues, repairs, letGo };
+  }
+
+  /** Viewpoints, parks, gardens, beaches, ghats, lakes: no fun in the rain. Food and covered places pass. */
+  private isOutdoors(s: Stop): boolean {
+    if (s.category === 'food') return false;
+    const types = (s.placeId && (this.details.get(s.placeId)?.types ?? this.found.get(s.placeId)?.types)) || [];
+    return s.category === 'nature' || OUTDOORS.test([s.name, ...types].join(' '));
   }
 
   private factsOf(d: PlaceDetails): PlaceFacts {
@@ -461,7 +520,27 @@ function defaultLunch(country: string, diet: TripPreferences['diet']): string {
   return diet === 'vegan' ? 'vegan lunch' : veg ? 'vegetarian lunch' : 'lunch';
 }
 
+/** Re-planning: longer than this with nothing to do feels like a broken plan. */
+const MAX_GAP_MIN = 150;
+
+const OUTDOORS = /\b(view ?point|viewpoint|sunset point|park|garden|beach|ghat|lake|trail|hike|zoo|stepwell|baori|open[- ]air|nature reserve|waterfall)\b/i;
+
 const toMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+
+/** Scheduled where no opening interval holds the whole visit (the scheduler already waited for opening). */
+function closedOnArrival(s: Stop, facts: Record<string, PlaceFacts>): boolean {
+  const f = s.placeId ? facts[s.placeId] : undefined;
+  if (!f) return false;
+  if (f.shut) return true;
+  if (f.hours === 'unknown') return false;
+  const start = toMinutes(s.startTime);
+  return !f.hours.some((h) => start >= toMinutes(h.open) && start + s.durationMin <= toMinutes(h.close));
+}
+
+function closingTime(s: Stop, facts: Record<string, PlaceFacts>): string | undefined {
+  const hours = s.placeId ? facts[s.placeId]?.hours : undefined;
+  return Array.isArray(hours) && hours.length ? hours.at(-1)!.close : undefined;
+}
 
 /** A sensible dish for the time of day when we don't know what a place is famous for. */
 function mealFor(atMin: number, country: string, diet: TripPreferences['diet']): string {

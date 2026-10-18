@@ -30,6 +30,8 @@ export interface PromptInput {
   mustHave?: Moment[];
   /** Minimum food stops today. */
   foodStops?: number;
+  /** Re-planning the rest of today. */
+  replan?: { now: string; instruction: string; done: string[]; remaining: string[]; lunchDone: boolean };
 }
 
 export function systemPrompt(): string {
@@ -66,7 +68,13 @@ export function systemPrompt(): string {
 export function requestPrompt(p: PromptInput): string {
   const weekday = new Date(`${p.date}T00:00:00Z`).toLocaleDateString('en-IN', { weekday: 'long', timeZone: 'UTC' });
   const lines = [
-    `Plan day ${p.dayNumber} of ${p.totalDays} in ${p.city}: ${weekday}, ${p.date}.`,
+    p.replan
+      ? `Re-plan the REST of today in ${p.city} (${weekday}, ${p.date}), starting now at ${p.replan.now} from where the traveler is. ${p.replan.instruction}`
+      : `Plan day ${p.dayNumber} of ${p.totalDays} in ${p.city}: ${weekday}, ${p.date}.`,
+    p.replan?.done.length ? `Already done today (don't repeat): ${p.replan.done.join('; ')}.` : undefined,
+    p.replan?.remaining.length ? `Still planned (keep what still works, replace the rest): ${p.replan.remaining.join('; ')}.` : undefined,
+    p.replan?.lunchDone ? 'They have had lunch.' : undefined,
+    p.replan ? 'Use near_place_id with places near them. The first stop should be close.' : undefined,
     p.stayNear ? `Staying near: ${p.stayNear}. Start and end the day near there.` : undefined,
     p.cityCenter ? `Sunrise ${sunTime(p.date, p.cityCenter, 'sunrise', p.timeZone) ?? 'unknown'}, sunset ${sunTime(p.date, p.cityCenter, 'sunset', p.timeZone) ?? 'unknown'} (local time).` : undefined,
     p.mustHave?.length

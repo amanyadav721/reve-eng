@@ -5,13 +5,16 @@ import { dayEnd, isLunch, MAX_STOPS, missingLunch, toMin } from './validate.js';
 
 // Code fixes the mechanical problems itself instead of sending them back to the model, which is
 // slow and often fails to converge: too many stops, a loved moment we can't reach, a day that runs
-// past 22:00, or no lunch. It never drops a loved moment, and never drops a meal the traveler needs.
+// past 22:00, or no lunch. It never drops a loved moment, a meal the traveler needs, or a stop they
+// just asked for.
 
 export interface RepairContext {
   pace?: TripPreferences['pace'];
   minFoodStops: number;
   /** Re-planning after lunch already happened: never insert another. */
   lunchDone?: boolean;
+  /** Re-planning: the traveler's day carries on from this time, "HH:mm". */
+  activeFrom?: string;
   /** Re-planning from the traveler's position: lunch may go first. */
   lunchAtStart?: boolean;
   /** When the day must end, "HH:mm". */
@@ -22,6 +25,8 @@ export interface RepairContext {
   relink: (stops: Stop[]) => Promise<void>;
   /** A lunch stop near the given position, from places already found (or a quick search). */
   findLunch: (stops: Stop[], insertAt: number) => Promise<Stop | undefined>;
+  /** Stop ids the traveler asked for just now (the meal when they're hungry): never dropped. */
+  keep?: Set<string>;
 }
 
 export interface RepairResult {
@@ -88,7 +93,7 @@ export async function repairDay(input: Stop[], ctx: RepairContext): Promise<Repa
     }
 
     // 4. No lunch: add one near wherever the traveler is around midday.
-    if (!ctx.lunchDone && missingLunch(stops)) {
+    if (!ctx.lunchDone && missingLunch(stops, ctx.activeFrom)) {
       const found = stops.findIndex((s) => toMin(s.startTime) >= 12 * 60 - 15);
       const insertAt = found === -1 ? stops.length : Math.max(ctx.lunchAtStart ? 0 : 1, found);
       const lunch = await ctx.findLunch(stops, insertAt);
@@ -111,6 +116,7 @@ function droppable(stops: Stop[], ctx: RepairContext): Stop[] {
   return stops.filter((s, i) => {
     if (i === 0 && stops.length <= 2) return false;
     if (s.moment) return false;
+    if (ctx.keep?.has(s.id)) return false;
     if (s.category === 'food' && food <= ctx.minFoodStops) return false;
     if (isLunch(s) && lunches <= 1) return false;
     return true;

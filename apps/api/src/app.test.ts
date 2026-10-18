@@ -37,6 +37,16 @@ describe('api', () => {
     assert.equal(res.status, 400);
   });
 
+  it('validates re-plan requests', async () => {
+    const preferences = { city: 'Jaipur', startDate: '2026-10-19', endDate: '2026-10-20' };
+    const stops = [{ id: 'a', name: 'Hawa Mahal', category: 'sight', startTime: '10:00', durationMin: 45, status: 'now' }];
+    const post = (body: unknown) => app.request('/v1/trips/replan', { method: 'POST', headers: { ...dev, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    // An unknown trigger, a bad clock time and a missing location are all refused.
+    assert.equal((await post({ preferences, stops, now: '10:30', location: { lat: 26.9, lng: 75.8 }, trigger: 'sleepy' })).status, 400);
+    assert.equal((await post({ preferences, stops, now: '10.30', location: { lat: 26.9, lng: 75.8 }, trigger: 'late' })).status, 400);
+    assert.equal((await post({ preferences, stops, now: '10:30', trigger: 'late' })).status, 400);
+  });
+
   it('says which keys are missing instead of planning without them', async () => {
     const preferences = { city: 'Jaipur', startDate: '2026-10-19', endDate: '2026-10-20' };
     const res = await app.request('/v1/trips/plan-day', { method: 'POST', headers: { ...dev, 'content-type': 'application/json' }, body: JSON.stringify({ preferences }) });
