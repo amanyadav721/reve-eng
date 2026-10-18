@@ -37,6 +37,7 @@ export function Laddoo({ size, variant = 'full', animated = true }: Props) {
   const breath = useSharedValue(0);
   const trunk = useSharedValue(0);
   const lids = useSharedValue(0);
+  const tail = useSharedValue(0);
 
   useEffect(() => {
     if (!live) return;
@@ -44,7 +45,8 @@ export function Laddoo({ size, variant = 'full', animated = true }: Props) {
     breath.value = withRepeat(withSequence(withTiming(1, { duration: 1400, easing: ease }), withTiming(0, { duration: 1400, easing: ease })), -1);
     trunk.value = withRepeat(withSequence(withTiming(1, { duration: 1800, easing: ease }), withTiming(0, { duration: 1800, easing: ease })), -1);
     lids.value = withRepeat(withSequence(withDelay(4200, withTiming(1, { duration: 90 })), withTiming(0, { duration: 140 })), -1);
-  }, [live, breath, trunk, lids]);
+    tail.value = withRepeat(withSequence(withTiming(1, { duration: 1100, easing: ease }), withTiming(-1, { duration: 1100, easing: ease })), -1, true);
+  }, [live, breath, trunk, lids, tail]);
 
   // Pivot points in viewBox units, converted to percentages of the layer.
   const origin = (x: number, y: number) => `${((x - vb.x) / vb.w) * 100}% ${((y - vb.y) / vb.h) * 100}%`;
@@ -56,6 +58,7 @@ export function Laddoo({ size, variant = 'full', animated = true }: Props) {
   const earRStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${7 * breath.value}deg` }] }));
   const trunkStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${-6 * trunk.value}deg` }] }));
   const lidStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: lids.value }] }));
+  const tailStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${6 * tail.value}deg` }] }));
 
   const layer = (children: ReactNode) => (
     <Svg width={size} height={height} viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} style={StyleSheet.absoluteFill}>
@@ -70,6 +73,9 @@ export function Laddoo({ size, variant = 'full', animated = true }: Props) {
         {variant === 'full' && layer(<Body />)}
         <Animated.View style={[StyleSheet.absoluteFill, { transformOrigin: origin(72, 52) }, earRStyle]}>
           {layer(<Ellipse cx="88" cy="52" rx="16" ry="20" fill="#7F8DAD" />)}
+        </Animated.View>
+        <Animated.View style={[StyleSheet.absoluteFill, { transformOrigin: origin(88, 32) }, tailStyle]}>
+          {layer(<Ponytail />)}
         </Animated.View>
         {layer(
           <G>
@@ -135,6 +141,17 @@ function Face() {
       <Circle cx="68.6" cy="48" r="1.5" fill="#fff" />
       <Ellipse cx="39" cy="61" rx="5" ry="3.2" fill={c.cheeks} opacity={0.85} />
       <Ellipse cx="76" cy="60" rx="4.5" ry="3" fill={c.cheeks} opacity={0.85} />
+    </G>
+  );
+}
+
+// Sticks out from under the back of the hat, in front of the far ear and behind the head.
+function Ponytail() {
+  return (
+    <G>
+      <Path d="M82 28 C 96 24, 106 34, 104 47 C 103 56, 98 62, 93 66 C 96 56, 95 46, 85 37 Z" fill={c.hair} />
+      <Path d="M91 31 C 99 33, 101 41, 99 50" fill="none" stroke={c.hairShine} strokeWidth="2" strokeLinecap="round" />
+      <Ellipse cx="89" cy="33" rx="3" ry="4.5" fill={c.hairTie} transform="rotate(-35 89 33)" />
     </G>
   );
 }

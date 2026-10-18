@@ -46,6 +46,9 @@ export const laddoo = {
   hatBrim: '#D9822B',
   hatBand: palette.terracotta,
   backpack: palette.terracotta,
+  hair: '#4A2E22',
+  hairShine: '#6B4535',
+  hairTie: palette.terracotta,
   eyes: palette.ink,
 } as const;
 
