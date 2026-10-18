@@ -14,10 +14,19 @@ A travel buddy that remembers how you travel and always knows what you should do
 
 ## Status
 
+### Any destination, worked out on the fly
+
+- **`POST /v1/trips/outline`** takes whatever the traveler typed ("Miami", "Japan", "Rajasthan", "Swiss Alps", "Taj Mahal", "somewhere warm") and returns either base cities with days and dates or one clarifying question. The AI proposes the route, and our code checks each city with OpenStreetMap's geocoder and makes the days add up. In a live test, 8 different requests all worked (Japan → Tokyo 4d + Kyoto 3d; Bali → Ubud + Seminyak; Taj Mahal → Agra).
+- **`POST /v1/trips/plan-day`** then plans each day in its city. Places for a new city are built on demand.
+- **Country-aware:** money is in the destination's currency, and each country has its own transport modes and fare model (`apps/api/src/places/countries.ts`). Countries without a fare model get travel times without prices, not made-up numbers. Sunrise and sunset use the city's own timezone.
+- **Roads:** where our routing server has roads (north, central and west India today), travel times are real. Elsewhere they're estimated from distance and marked with "~" until that region's roads are added.
+- **Web search (optional, recommended):** set `TAVILY_API_KEY` so the planner can look up what's famous, what's on and current prices anywhere. Without it, quality outside our curated Indian cities depends on open data and the AI's own knowledge.
+
 ### Our own places and routing (no Google)
 
-- **Places:** `npm run data:places -w api -- jaipur` builds a Jaipur database of about 47,000 places. It merges Overture Maps places with OpenStreetMap points of interest (which supply opening hours, fees and Wikidata links where they exist) and adds a curated "known for" layer (`apps/api/data/curated/`). The output is gitignored. Opening hours are never invented: only about 130 places list them, and the rest show "not listed".
-- **Routing:** run `docker-compose -f infra/valhalla/docker-compose.yml up -d` to start our own Valhalla server on OpenStreetMap roads for North India, at `localhost:8002`. Road times are padded for traffic, because there's no live traffic data.
+- **Any city:** the API builds a city's places database automatically the first time someone plans a trip there (about a minute, then it's saved). Prebuilt so far: Jaipur, Goa, Varanasi, Udaipur and Rishikesh. Amritsar was tested on demand.
+- **Places:** `npm run data:places -w api -- jaipur` (or any city name, e.g. `-- "Kochi"`) builds a city's places database. Jaipur has about 47,000 places. It merges Overture Maps places with OpenStreetMap points of interest (which supply opening hours, fees and Wikidata links where they exist) and adds a curated "known for" layer (`apps/api/data/curated/`). The output is gitignored. Opening hours are never invented: only about 130 places list them, and the rest show "not listed".
+- **Routing:** run `docker-compose -f infra/valhalla/docker-compose.yml up -d` to start our own Valhalla server on OpenStreetMap roads at `localhost:8002`. It covers the northern, central and western India zones, so South and East India still need their extracts added. Road times are padded for traffic, because there's no live traffic data.
 - **Planner:** uses these automatically when there's no Google key. Override with `PLACES_PROVIDER` and `ROUTES_PROVIDER`. Our code sets the exact schedule from real travel times and opening hours, and enforces diet as a hard rule.
 - **Latest eval (3 Jaipur days):** 2 valid and passing every check, about ₹2 and 45 s per day. Known gaps: geography on packed days, empty afternoons, generic dishes ("street food"), food attached to a street rather than an eatery, and guessed entry fees.
 

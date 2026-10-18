@@ -1,0 +1,78 @@
+{
+  "note": "What famous Goa eateries are known for, so the planner can find a dish without Google. Draft from widely published guides: verify each entry on the ground before launch. Never add opening hours here unless someone has checked them.",
+  "places": [
+    {
+      "name": "Ritz Classic",
+      "knownFor": [
+        "fish thali",
+        "goan fish curry",
+        "seafood"
+      ],
+      "verified": false
+    },
+    {
+      "name": "Viva Panjim",
+      "knownFor": [
+        "goan food",
+        "xacuti",
+        "vindaloo",
+        "bebinca"
+      ],
+      "verified": false
+    },
+    {
+      "name": "Mum's Kitchen",
+      "knownFor": [
+        "goan food",
+        "seafood",
+        "bebinca"
+      ],
+      "verified": false
+    },
+    {
+      "name": "Cafe Tato",
+      "knownFor": [
+        "bhaji pao",
+        "goan breakfast",
+        "veg thali"
+      ],
+      "verified": false
+    },
+    {
+      "name": "Martin's Corner",
+      "knownFor": [
+        "seafood",
+        "goan food",
+        "crab"
+      ],
+      "verified": false
+    },
+    {
+      "name": "Gunpowder",
+      "knownFor": [
+        "south indian",
+        "appam",
+        "kerala food"
+      ],
+      "verified": false
+    },
+    {
+      "name": "Fisherman's Wharf",
+      "knownFor": [
+        "seafood",
+        "goan food",
+        "riverside dinner"
+      ],
+      "verified": false
+    },
+    {
+      "name": "Hotel Venite",
+      "knownFor": [
+        "goan food",
+        "balcao dining",
+        "fontainhas"
+      ],
+      "verified": false
+    }
+  ]
+}

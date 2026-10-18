@@ -1,4 +1,4 @@
-import type { Stop, TripPreferences } from '@tagalong/shared';
+import { formatMoneyRange, type Stop, type TripPreferences } from '@tagalong/shared';
 
 // The AI proposes, real data verifies, code decides.
 // validateDay() is the "code decides" part: it rejects plans the model got wrong, and its
@@ -37,7 +37,13 @@ export type IssueCode =
   | 'memory_unused'
   | 'too_few_stops'
   | 'missing_dish'
-  | 'too_late';
+  | 'too_late'
+  | 'mode_unavailable'
+  | 'starts_late'
+  | 'day_too_short'
+  | 'too_few_food_stops'
+  | 'missing_moment'
+  | 'missed_moment';
 
 export interface Issue {
   code: IssueCode;
@@ -47,15 +53,23 @@ export interface Issue {
 
 export interface DayRules {
   pace?: TripPreferences['pace'];
-  budgetPerDayInr?: number;
+  budgetPerDay?: number;
   /** Earliest start the traveler accepts, "HH:mm". From memory ("Nothing before 8 AM"). */
   notBefore?: string;
   /** When the day should be over. Default 22:00. */
   notAfter?: string;
+  /** ISO 4217, for messages. Default INR. */
+  currency?: string;
+  /** At least this many food stops. */
+  minFoodStops?: number;
+  /** Re-planning: lunch already happened, so don't ask for it. */
+  lunchDone?: boolean;
 }
 
-const MAX_STOPS = { chill: 3, balanced: 5, packed: 7 } as const;
+export const MAX_STOPS = { chill: 3, balanced: 5, packed: 7 } as const;
 const MIN_STOPS = { chill: 2, balanced: 3, packed: 5 } as const;
+/** A day should fill this much time, first start to last end, in minutes. */
+const MIN_DAY = { chill: 300, balanced: 420, packed: 540 } as const;
 // A day needs a food stop if it runs through midday: starts before 12:30 and ends after 14:00.
 const LUNCH = { from: toMin('12:00'), to: toMin('15:00'), dayStartsBefore: toMin('12:30'), dayEndsAfter: toMin('14:00') };
 
@@ -106,18 +120,19 @@ export function validateDay(stops: Stop[], places: Record<string, PlaceFacts>, r
     }
   }
 
-  if (rules.budgetPerDayInr !== undefined) {
+  if (rules.budgetPerDay !== undefined) {
     // Fares are ranges; budget against the middle of the range.
-    const fare = (s: Stop) => (s.hop?.fareMinInr !== undefined && s.hop.fareMaxInr !== undefined ? Math.round((s.hop.fareMinInr + s.hop.fareMaxInr) / 2) : (s.hop?.fareMaxInr ?? 0));
-    const spend = active.reduce((sum, s) => sum + (s.costInr ?? 0) + fare(s), 0);
-    if (spend > rules.budgetPerDayInr) {
+    const fare = (s: Stop) => (s.hop?.fareMin !== undefined && s.hop.fareMax !== undefined ? Math.round((s.hop.fareMin + s.hop.fareMax) / 2) : (s.hop?.fareMax ?? 0));
+    const spend = active.reduce((sum, s) => sum + (s.cost ?? 0) + fare(s), 0);
+    const money = (n: number) => formatMoneyRange(n, undefined, rules.currency ?? 'INR')!;
+    if (spend > rules.budgetPerDay) {
       const sum = (pick: (s: Stop) => number) => active.reduce((t, s) => t + pick(s), 0);
-      const entries = sum((s) => (s.category === 'food' ? 0 : (s.costInr ?? 0)));
-      const food = sum((s) => (s.category === 'food' ? (s.costInr ?? 0) : 0));
+      const entries = sum((s) => (s.category === 'food' ? 0 : (s.cost ?? 0)));
+      const food = sum((s) => (s.category === 'food' ? (s.cost ?? 0) : 0));
       const rides = sum(fare);
       issues.push({
         code: 'over_budget',
-        message: `The day costs about ₹${spend} (entries ₹${entries}, food ₹${food}, rides ₹${rides}), over the ₹${rules.budgetPerDayInr} budget.`,
+        message: `The day costs about ${money(spend)} (entries ${money(entries)}, food ${money(food)}, rides ${money(rides)}), over the ${money(rules.budgetPerDay)} budget.`,
       });
     }
   }
@@ -131,13 +146,29 @@ export function validateDay(stops: Stop[], places: Record<string, PlaceFacts>, r
     }
   }
 
+  if (rules.pace && active.length) {
+    const span = lastEnd(active) - toMin(active[0].startTime);
+    if (span < MIN_DAY[rules.pace]) {
+      issues.push({ code: 'day_too_short', message: `The day only runs ${fmt(toMin(active[0].startTime))}–${fmt(lastEnd(active))}; a ${rules.pace} day should fill at least ${MIN_DAY[rules.pace] / 60} hours.` });
+    }
+  }
+
+  const foodStops = active.filter((s) => s.category === 'food').length;
+  if (rules.minFoodStops && foodStops < rules.minFoodStops) {
+    issues.push({ code: 'too_few_food_stops', message: `${foodStops} food stop${foodStops === 1 ? '' : 's'}; this traveler should get at least ${rules.minFoodStops}.` });
+  }
+
+  // A day starts in the morning: the evening highlight goes at the end, not the start.
+  const latestStart = rules.pace === 'chill' ? '13:00' : '11:00';
+  if (rules.pace && active.length && toMin(active[0].startTime) > toMin(latestStart)) {
+    issues.push({ code: 'starts_late', stopId: active[0].id, message: `The day starts at ${active[0].startTime}; a ${rules.pace ?? 'balanced'} day should start by ${latestStart}.` });
+  }
+
   if (active.length && lastEnd(active) > toMin(rules.notAfter ?? '22:00')) {
     issues.push({ code: 'too_late', message: `The day ends at ${fmt(lastEnd(active))}, after ${rules.notAfter ?? '22:00'}.` });
   }
 
-  const spansLunch = active.length > 0 && toMin(active[0].startTime) < LUNCH.dayStartsBefore && lastEnd(active) > LUNCH.dayEndsAfter;
-  const hasLunch = active.some((s) => s.category === 'food' && toMin(s.startTime) >= LUNCH.from - 30 && toMin(s.startTime) <= LUNCH.to);
-  if (spansLunch && !hasLunch) {
+  if (!rules.lunchDone && missingLunch(active)) {
     issues.push({ code: 'no_lunch', message: 'The day runs through lunch but has no food stop between 11:30 and 15:00.' });
   }
 
@@ -151,4 +182,21 @@ function lastEnd(stops: Stop[]): number {
 
 function fmt(min: number): string {
   return `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+}
+
+/** True when the day runs through midday with no food stop in the lunch window. */
+export function missingLunch(stops: Stop[]): boolean {
+  const active = stops.filter((s) => s.status !== 'skipped');
+  if (!active.length) return false;
+  const spans = toMin(active[0].startTime) < LUNCH.dayStartsBefore && lastEnd(active) > LUNCH.dayEndsAfter;
+  return spans && !active.some((s) => isLunch(s));
+}
+
+export function isLunch(s: Stop): boolean {
+  return s.category === 'food' && toMin(s.startTime) >= LUNCH.from - 30 && toMin(s.startTime) <= LUNCH.to;
+}
+
+export function dayEnd(stops: Stop[]): number {
+  const active = stops.filter((s) => s.status !== 'skipped');
+  return active.length ? lastEnd(active) : 0;
 }

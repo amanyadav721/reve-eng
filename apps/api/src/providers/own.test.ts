@@ -82,3 +82,31 @@ describe('valhallaRoutes', () => {
     assert.equal(await v.route({ from: center, to: center, mode: 'drive' }), null);
   });
 });
+
+describe('cityArea', () => {
+  it('uses our hand-checked areas first', async () => {
+    const { cityArea } = await import('../places/ensureCity.js');
+    const area = await cityArea('  Jaipur ', (async () => {
+      throw new Error('should not geocode a known city');
+    }) as typeof fetch);
+    assert.equal(area?.key, 'jaipur');
+  });
+
+  it('geocodes any other city, keeping the area a sensible size', async () => {
+    const { cityArea } = await import('../places/ensureCity.js');
+    let calls = 0;
+    const fakeNominatim = (async () => {
+      calls++;
+      // A huge district-sized box: should be clamped to about 0.6° around the centre.
+      return new Response(JSON.stringify([{ lat: '31.5', lon: '75', boundingbox: ['30.5', '32.5', '74.0', '76.0'], display_name: 'Testpur', address: { country_code: 'in' } }]), { status: 200 });
+    }) as typeof fetch;
+    const a = await cityArea('Testpur', fakeNominatim);
+    assert.ok(a);
+    assert.ok(a.bbox[2] - a.bbox[0] <= 0.61 && a.bbox[3] - a.bbox[1] <= 0.61);
+    assert.deepEqual(a.center, { lat: 31.5, lng: 75 });
+    assert.equal(a.timeZone, 'Asia/Kolkata');
+    assert.equal(a.currency, 'INR');
+    await cityArea('testpur', fakeNominatim);
+    assert.equal(calls, 1, 'second lookup should be cached');
+  });
+});

@@ -26,7 +26,6 @@ const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 export function score(s: Scenario, r: PlanDayResult): Score {
   const checks: Check[] = [];
   const stops = r.stops;
-  const text = (st: Stop) => `${st.name} ${st.reason ?? ''}`;
 
   checks.push({ name: 'valid plan', pass: r.ok, detail: r.ok ? undefined : r.error ?? r.issues.map((i) => i.message).join(' | ') });
   checks.push({ name: 'every stop is a real place', pass: stops.length > 0 && stops.every((st) => !!st.placeId) });
@@ -42,8 +41,9 @@ export function score(s: Scenario, r: PlanDayResult): Score {
   const dietHit = food.find((st) => dietConflict(s.prefs.diet, st.name));
   checks.push({ name: `food fits the diet (${s.prefs.diet ?? 'any'})`, pass: !dietHit, detail: dietHit?.name });
 
+  // Names only: a reason saying "away from crowded Baga" isn't a visit to Baga.
   for (const re of s.expect.mustNotMention ?? []) {
-    const hit = stops.find((st) => re.test(text(st)));
+    const hit = stops.find((st) => re.test(st.name));
     checks.push({ name: `avoids ${re.source} (heuristic)`, pass: !hit, detail: hit?.name });
   }
 

@@ -37,9 +37,34 @@ const DEFAULT_DIR = new URL('../../data/places/', import.meta.url).pathname;
 export class LocalPlaces implements PlacesProvider {
   private readonly places: Indexed[] = [];
   private readonly byId = new Map<string, Indexed>();
+  private readonly cities = new Set<string>();
 
-  constructor(records: PlaceRecord[]) {
+  constructor(records: PlaceRecord[] = []) {
+    this.add(records);
+  }
+
+  /** Loads every city in data/places. An empty directory gives an empty database (cities load on demand). */
+  static fromDir(dir = DEFAULT_DIR): LocalPlaces {
+    const db = new LocalPlaces();
+    if (!existsSync(dir)) return db;
+    for (const f of readdirSync(dir).filter((f) => f.endsWith('.json'))) {
+      db.addCity(f.replace(/\.json$/, ''), (JSON.parse(readFileSync(join(dir, f), 'utf8')) as { places: PlaceRecord[] }).places);
+    }
+    return db;
+  }
+
+  hasCity(key: string): boolean {
+    return this.cities.has(key);
+  }
+
+  addCity(key: string, records: PlaceRecord[]): void {
+    this.cities.add(key);
+    this.add(records);
+  }
+
+  private add(records: PlaceRecord[]): void {
     for (const r of records) {
+      if (this.byId.has(r.id)) continue;
       const p: Indexed = {
         ...r,
         nameTokens: new Set([r.name, ...r.altNames].flatMap(tokens)),
@@ -48,14 +73,6 @@ export class LocalPlaces implements PlacesProvider {
       this.places.push(p);
       this.byId.set(p.id, p);
     }
-  }
-
-  static fromDir(dir = DEFAULT_DIR): LocalPlaces | undefined {
-    if (!existsSync(dir)) return undefined;
-    const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
-    if (!files.length) return undefined;
-    const all = files.flatMap((f) => (JSON.parse(readFileSync(join(dir, f), 'utf8')) as { places: PlaceRecord[] }).places);
-    return new LocalPlaces(all);
   }
 
   get size(): number {

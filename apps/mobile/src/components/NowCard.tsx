@@ -1,4 +1,4 @@
-import { formatInrRange, formatTime12, type Stop, type TransportMode } from '@tagalong/shared';
+import { formatMoneyRange, formatTime12, type Stop, type TransportMode } from '@tagalong/shared';
 import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming, FadeInDown } from 'react-native-reanimated';
@@ -14,13 +14,13 @@ import { Txt } from './Txt';
 const modeIcon: Record<TransportMode, string> = { walk: '🚶', auto: '🛺', cab: '🚕', metro: '🚇', bus: '🚌', train: '🚆', scooter: '🛵' };
 const modeVerb: Record<TransportMode, string> = { walk: 'walk', auto: 'by auto', cab: 'by cab', metro: 'by metro', bus: 'by bus', train: 'by train', scooter: 'by scooter' };
 
-export function stopMeta(stop: Stop): string {
+export function stopMeta(stop: Stop, currency = 'INR'): string {
   const parts: string[] = [];
   if (stop.hop) {
-    const fare = formatInrRange(stop.hop.fareMinInr, stop.hop.fareMaxInr);
-    parts.push(`${modeIcon[stop.hop.mode]} ${stop.hop.minutes} min ${modeVerb[stop.hop.mode]}${fare ? ` · ${fare}` : ''}`);
+    const fare = formatMoneyRange(stop.hop.fareMin, stop.hop.fareMax, currency);
+    parts.push(`${modeIcon[stop.hop.mode]} ${stop.hop.estimated ? '~' : ''}${stop.hop.minutes} min ${modeVerb[stop.hop.mode]}${fare ? ` · ${fare}` : ''}`);
   }
-  if (stop.costInr) parts.push(`₹${stop.costInr}${stop.category === 'sight' ? ' entry' : ''}`);
+  if (stop.cost) parts.push(`${formatMoneyRange(stop.cost, undefined, currency)}${stop.category === 'sight' ? ' entry' : ''}`);
   if (stop.openUntil) parts.push(`open till ${formatTime12(stop.openUntil).replace(':00', '')}`);
   return parts.join(' · ');
 }

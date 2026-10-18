@@ -1,0 +1,66 @@
+{
+  "note": "What famous Udaipur eateries are known for, so the planner can find a dish without Google. Draft from widely published guides: verify each entry on the ground before launch. Never add opening hours here unless someone has checked them.",
+  "places": [
+    {
+      "name": "Natraj Dining Hall",
+      "knownFor": [
+        "rajasthani thali",
+        "thali",
+        "dal baati churma"
+      ],
+      "verified": false
+    },
+    {
+      "name": "Ambrai",
+      "knownFor": [
+        "lake view dinner",
+        "rajasthani",
+        "laal maas"
+      ],
+      "verified": false
+    },
+    {
+      "name": "Upre",
+      "aka": [
+        "Upre by 1559 AD"
+      ],
+      "knownFor": [
+        "rooftop dinner",
+        "lake view",
+        "rooftop"
+      ],
+      "verified": false
+    },
+    {
+      "name": "Jheel's Ginger Coffee Bar",
+      "aka": [
+        "Jheels Ginger"
+      ],
+      "knownFor": [
+        "coffee",
+        "cafe",
+        "lake view breakfast"
+      ],
+      "verified": false
+    },
+    {
+      "name": "Millets of Mewar",
+      "knownFor": [
+        "millet dishes",
+        "vegan",
+        "healthy food",
+        "rajasthani"
+      ],
+      "verified": false
+    },
+    {
+      "name": "Jagat Niwas Palace",
+      "knownFor": [
+        "rooftop dinner",
+        "lake view",
+        "rajasthani"
+      ],
+      "verified": false
+    }
+  ]
+}

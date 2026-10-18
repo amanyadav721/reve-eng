@@ -1,0 +1,58 @@
+{
+  "note": "What famous Varanasi eateries are known for, so the planner can find a dish without Google. Draft from widely published guides: verify each entry on the ground before launch. Never add opening hours here unless someone has checked them.",
+  "places": [
+    {
+      "name": "Kashi Chat Bhandar",
+      "knownFor": [
+        "tamatar chaat",
+        "chaat",
+        "street food"
+      ],
+      "verified": false
+    },
+    {
+      "name": "Blue Lassi",
+      "knownFor": [
+        "lassi",
+        "fruit lassi"
+      ],
+      "verified": false
+    },
+    {
+      "name": "Deena Chat Bhandar",
+      "knownFor": [
+        "tamatar chaat",
+        "chaat",
+        "palak chaat"
+      ],
+      "verified": false
+    },
+    {
+      "name": "Pahalwan Lassi",
+      "knownFor": [
+        "lassi",
+        "malaiyo",
+        "rabri"
+      ],
+      "verified": false
+    },
+    {
+      "name": "Ram Bhandar",
+      "knownFor": [
+        "kachori sabzi",
+        "jalebi",
+        "breakfast"
+      ],
+      "verified": false
+    },
+    {
+      "name": "Baati Chokha",
+      "knownFor": [
+        "baati chokha",
+        "litti chokha",
+        "banarasi food"
+      ],
+      "verified": false
+    }
+  ]
+}

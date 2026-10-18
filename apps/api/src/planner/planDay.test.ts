@@ -23,6 +23,9 @@ const PLACES: Record<string, PlaceDetails> = {
   },
 };
 
+// Viewpoints often have no listed hours, like this one.
+PLACES.p_nahargarh = { placeId: 'p_nahargarh', name: 'Nahargarh Fort', location: { lat: 26.937, lng: 75.815 }, types: ['viewpoint'] };
+
 const places: PlacesProvider = {
   async search({ text }) {
     return Object.values(PLACES).filter((p) => text.toLowerCase().includes(p.name.split(' ')[0].toLowerCase()) || text.includes('kachori') === (p.placeId === 'p_rawat'));
@@ -63,11 +66,14 @@ const stop = (place_id: string, start_time: string, extra: Record<string, unknow
   icon: '📍',
   start_time,
   duration_min: 45,
+  dish: '',
+  timed_for: 'none',
   reason: 'A good stop for this traveler, trust me.',
   ...extra,
 });
 
-const input = { city: 'Jaipur', cityCenter: { lat: 26.91, lng: 75.79 }, date: '2026-10-19', rules: { notBefore: '08:00' } };
+// Meal and moment rules have their own tests; these focus on the loop.
+const input = { city: 'Jaipur', cityCenter: { lat: 26.91, lng: 75.79 }, date: '2026-10-19', rules: { notBefore: '08:00', minFoodStops: 0 } };
 
 describe('planDay', () => {
   it('researches, gets rejected for a closed place, fixes it, and is accepted', async () => {
@@ -75,9 +81,9 @@ describe('planDay', () => {
       () => reply(call('search_places', { query: 'pyaaz kachori' }), call('search_places', { query: 'Hawa Mahal' })),
       () => reply(call('place_details', { place_id: 'p_rawat' }), call('place_details', { place_id: 'p_hawa' }), call('get_route', { from_place_id: 'p_rawat', to_place_id: 'p_hawa', mode: 'auto' })),
       // Hawa Mahal closes at 16:30: a 45-minute visit from 16:00 doesn't fit.
-      () => reply(call('submit_plan', { stops: [stop('p_rawat', '15:00', { dish: 'Pyaaz kachori', cost_inr: 40 }), stop('p_hawa', '16:00', { hop_mode: 'auto', cost_inr: 200 })] })),
+      () => reply(call('submit_plan', { stops: [stop('p_rawat', '15:00', { dish: 'Pyaaz kachori', cost: 40 }), stop('p_hawa', '16:00', { hop_mode: 'auto', cost: 200 })] })),
       // 13:00 + 45 min + 15 min ride: our scheduler starts Hawa Mahal at 14:00, not the hinted 13:50.
-      () => reply(call('submit_plan', { stops: [stop('p_rawat', '13:00', { dish: 'Pyaaz kachori', cost_inr: 40 }), stop('p_hawa', '13:50', { hop_mode: 'auto', cost_inr: 200 })] })),
+      () => reply(call('submit_plan', { stops: [stop('p_rawat', '13:00', { dish: 'Pyaaz kachori', cost: 40 }), stop('p_hawa', '13:50', { hop_mode: 'auto', cost: 200 })] })),
     ]);
 
     const result = await planDay(input, { chat: model.chat, places, routes });
@@ -93,7 +99,7 @@ describe('planDay', () => {
     assert.equal(result.stops[1].name, 'Hawa Mahal');
     assert.equal(result.stops[1].startTime, '14:00');
     assert.equal(result.stops[1].hop?.minutes, 15);
-    assert.ok((result.stops[1].hop?.fareMaxInr ?? 0) > 0);
+    assert.ok((result.stops[1].hop?.fareMax ?? 0) > 0);
     assert.equal(result.stops[1].distanceKm, 3.2);
   });
 
@@ -166,6 +172,25 @@ describe('planDay', () => {
     assert.deepEqual(model.requests[1].tool_choice, { type: 'function', function: { name: 'submit_plan' } });
     const replies = model.requests[1].messages.filter((m) => m.role === 'tool').map((m) => ('tool_call_id' in m ? m.tool_call_id : ''));
     assert.equal(new Set(replies).size, replies.length, 'a tool call was answered twice');
+  });
+
+  it('requires the moments they love, pinned to the real sunset', async () => {
+    const memories = [{ id: 'm', kind: 'love' as const, text: 'Always wants a sunset spot', evidence: 'Every trip', source: 'chat' as const, sensitive: false, createdAt: '2026-01-01' }];
+    const day = [stop('p_hawa', '10:00'), stop('p_rawat', '12:30', { dish: 'pyaaz kachori', hop_mode: 'auto', reason: 'Lunch, the way you **like it**.' })];
+    const model = scripted([
+      () => reply(call('search_places', { query: 'Hawa Mahal' }), call('search_places', { query: 'pyaaz kachori' }), call('search_places', { query: 'Nahargarh' })),
+      // No sunset stop: rejected.
+      () => reply(call('submit_plan', { stops: day })),
+      // Tagged for sunset with a wrong hint (14:00): our code pins it to the real time.
+      () => reply(call('submit_plan', { stops: [...day, stop('p_nahargarh', '14:00', { category: 'nature', timed_for: 'sunset', hop_mode: 'cab', reason: 'Sunset, as you **always want**.' })] })),
+    ]);
+    const result = await planDay({ ...input, memories }, { chat: model.chat, places, routes });
+    const firstFeedback = model.requests[2].messages.at(-1);
+    assert.match(String(firstFeedback && 'content' in firstFeedback ? firstFeedback.content : ''), /They love sunset/);
+    assert.equal(result.ok, true, result.error ?? result.issues.map((i) => i.message).join(' | '));
+    // Jaipur sunset on 19 Oct is about 17:5x; the stop starts ~40 min before.
+    assert.match(result.stops[2].startTime, /^17:[01]\d$/);
+    assert.equal(result.stops[2].moment, 'sunset');
   });
 
   it('answers tool errors instead of throwing', async () => {

@@ -3,27 +3,30 @@ import { openWeather, tavily } from '../providers/extras.js';
 import { googlePlaces, googleRoutes } from '../providers/google.js';
 import { LocalPlaces } from '../providers/local.js';
 import type { LatLng, PlacesProvider, RoutesProvider } from '../providers/types.js';
+import { withEstimates } from '../providers/estimate.js';
 import { valhallaRoutes } from '../providers/valhalla.js';
 import { chat } from '../sarvam.js';
 import type { PlanDayDeps } from './planDay.js';
 
-let localPlaces: LocalPlaces | undefined | null = null;
+let localPlaces: LocalPlaces | undefined;
 
-/** Our own places database, loaded once from data/places (build it with `npm run data:places -w api -- jaipur`). */
-function ownPlaces(): LocalPlaces | undefined {
-  if (localPlaces === null) localPlaces = LocalPlaces.fromDir();
+/** Our own places database: every city already built in data/places; new cities load on demand. */
+export function ownPlaces(): LocalPlaces {
+  localPlaces ??= LocalPlaces.fromDir();
   return localPlaces;
 }
 
 export function placesProvider(): PlacesProvider | { missing: string[] } {
   const choice = env.PLACES_PROVIDER ?? (env.GOOGLE_MAPS_API_KEY ? 'google' : 'local');
   if (choice === 'google') return env.GOOGLE_MAPS_API_KEY ? googlePlaces(env.GOOGLE_MAPS_API_KEY) : { missing: ['GOOGLE_MAPS_API_KEY'] };
-  return ownPlaces() ?? { missing: ['places data (run: npm run data:places -w api -- jaipur)'] };
+  return ownPlaces();
 }
 
 export function routesProvider(): RoutesProvider {
   const choice = env.ROUTES_PROVIDER ?? (env.GOOGLE_MAPS_API_KEY ? 'google' : 'valhalla');
-  return choice === 'google' && env.GOOGLE_MAPS_API_KEY ? googleRoutes(env.GOOGLE_MAPS_API_KEY) : valhallaRoutes(env.VALHALLA_URL);
+  const primary = choice === 'google' && env.GOOGLE_MAPS_API_KEY ? googleRoutes(env.GOOGLE_MAPS_API_KEY) : valhallaRoutes(env.VALHALLA_URL);
+  // Anywhere we have no roads loaded yet, plan with marked estimates rather than failing.
+  return withEstimates(primary);
 }
 
 /** Real providers from env. Returns what's missing instead when the essentials aren't set. */

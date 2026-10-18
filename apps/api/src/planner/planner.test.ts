@@ -57,13 +57,25 @@ describe('validateDay', () => {
 
   it('respects remembered rules: budget, pace and start time', () => {
     const day = [
-      stop({ id: 'a', startTime: '07:00', costInr: 600 }),
-      stop({ id: 'b', startTime: '08:30', costInr: 600, hop: { mode: 'auto', minutes: 10, fareMaxInr: 120 } }),
-      stop({ id: 'c', startTime: '10:00', costInr: 600 }),
+      stop({ id: 'a', startTime: '07:00', cost: 600 }),
+      stop({ id: 'b', startTime: '08:30', cost: 600, hop: { mode: 'auto', minutes: 10, fareMax: 120 } }),
+      stop({ id: 'c', startTime: '10:00', cost: 600 }),
       stop({ id: 'd', startTime: '11:15' }),
     ];
-    const codes = validateDay(day, open('a', 'b', 'c', 'd'), { budgetPerDayInr: 1500, pace: 'chill', notBefore: '08:00' }).map((i) => i.code);
+    const codes = validateDay(day, open('a', 'b', 'c', 'd'), { budgetPerDay: 1500, pace: 'chill', notBefore: '08:00' }).map((i) => i.code);
     assert.deepEqual(codes.sort(), ['over_budget', 'too_early', 'too_many_stops']);
+  });
+
+  it('wants the day to start in the morning', () => {
+    const day = [stop({ id: 'sunset', startTime: '18:50' })];
+    assert.ok(validateDay(day, open('sunset'), { pace: 'balanced' }).some((i) => i.code === 'starts_late'));
+    assert.ok(!validateDay([stop({ id: 'late-brunch', startTime: '12:00' })], open('late-brunch'), { pace: 'chill' }).some((i) => i.code === 'starts_late'));
+  });
+
+  it('wants a full day and enough food stops', () => {
+    const short = [stop({ id: 'a', startTime: '07:00', durationMin: 90 }), stop({ id: 'b', startTime: '09:00' })];
+    const codes = validateDay(short, open('a', 'b'), { pace: 'chill', minFoodStops: 1 }).map((i) => i.code);
+    assert.ok(codes.includes('day_too_short') && codes.includes('too_few_food_stops'), codes.join(','));
   });
 
   it('wants a food stop when the day runs through lunch', () => {
@@ -79,22 +91,30 @@ describe('validateDay', () => {
 
 describe('estimateFare', () => {
   it('is free to walk', () => {
-    assert.deepEqual(estimateFare('walk', 3), { minInr: 0, maxInr: 0 });
+    assert.deepEqual(estimateFare('walk', 3), { min: 0, max: 0 });
   });
 
   it('gives a range that grows with distance', () => {
-    const near = estimateFare('auto', 2);
-    const far = estimateFare('auto', 10);
-    assert.ok(near.minInr < near.maxInr);
-    assert.ok(far.minInr > near.maxInr);
+    const near = estimateFare('auto', 2)!;
+    const far = estimateFare('auto', 10)!;
+    assert.ok(near.min < near.max);
+    assert.ok(far.min > near.max);
   });
 
   it('prices a cab above an auto for the same trip', () => {
-    assert.ok(estimateFare('cab', 9).minInr > estimateFare('auto', 9).minInr);
+    assert.ok(estimateFare('cab', 9)!.min > estimateFare('auto', 9)!.min);
   });
 
   it('caps metro fares', () => {
-    assert.equal(estimateFare('metro', 80).maxInr, 60);
+    assert.equal(estimateFare('metro', 80)!.max, 60);
+  });
+
+  it('prices rides in the local currency, and has no autos in the US', () => {
+    const miami = estimateFare('cab', 8, 'us')!;
+    assert.ok(miami.min >= 10 && miami.max <= 30, JSON.stringify(miami));
+    assert.equal(estimateFare('auto', 3, 'us'), undefined);
+    assert.equal(estimateFare('metro', 5, 'us')!.max, 2.5);
+    assert.equal(estimateFare('cab', 5, 'xx'), undefined, 'no fare model: no made-up number');
   });
 
   it('rejects bad distances', () => {

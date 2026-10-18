@@ -1,6 +1,6 @@
-import type { Memory, TripPreferences } from '@tagalong/shared';
-import { getTimes } from 'suncalc';
+import { formatMoneyRange, type Memory, type TransportMode, type TripPreferences } from '@tagalong/shared';
 
+import { momentLabel, sunTime, type Moment } from './moments.js';
 import type { DayRules } from './validate.js';
 
 const PACE = { chill: '2–3 stops', balanced: '4–5 stops', packed: '6–7 stops' } as const;
@@ -22,6 +22,14 @@ export interface PromptInput {
   memories: Memory[];
   stayNear?: string;
   cityCenter?: { lat: number; lng: number };
+  currency: string;
+  timeZone: string;
+  /** Modes that exist in this country, with local names ("auto-rickshaw", "Uber/Lyft"). */
+  modes: { mode: TransportMode; name?: string }[];
+  /** Moments they love, which the day must include. */
+  mustHave?: Moment[];
+  /** Minimum food stops today. */
+  foodStops?: number;
 }
 
 export function systemPrompt(): string {
@@ -40,13 +48,13 @@ export function systemPrompt(): string {
     '- Food is a hero. For food stops, name the specific famous local dish and pick the place best known for it. Use web_search to find what the city is famous for.',
     '- Sensible geography: cluster nearby stops, avoid zig-zagging across the city.',
     '- Right time for each place: sunsets at sunset, markets when they are lively, heavy sights before the midday heat.',
-    '- Practical transport: walk under ~1 km, autos for short hops, cabs for long or hilly rides, metro where it exists.',
+    '- Practical transport, using only the modes listed for this city: walk under ~1 km, the cheapest ride for short hops, cabs for long or hilly rides, metro or rail where it exists.',
     '- If get_weather shows heat over 35°C or rain over 50%, put indoor or shaded stops in those hours.',
     '- reason: one or two short sentences, specific and a little cheeky. When a memory applies, use it ("You loved the mirchi vada in Jodhpur, so…"). Wrap the remembered detail in **double asterisks**.',
     '',
     'Before calling submit_plan, check:',
     '- Lunch: a food stop with a named local dish between 12:00 and 14:30 if the day runs through midday.',
-    '- Loves: at least one stop for something the traveler loves (a sunset spot timed for sunset, a market, a dish they liked).',
+    '- Loves: every "Must include" moment is in the plan, tagged with timed_for. Sunset and aarti stops go at the end of the day; sunrise at the start.',
     '- Memory: at least one reason mentions what you remember about them, in **double asterisks**.',
     '- Money: entry fees + food + ride fares (from get_route) fit the budget.',
     '- Time: the whole day, including travel, ends by 21:30.',
@@ -60,10 +68,15 @@ export function requestPrompt(p: PromptInput): string {
   const lines = [
     `Plan day ${p.dayNumber} of ${p.totalDays} in ${p.city}: ${weekday}, ${p.date}.`,
     p.stayNear ? `Staying near: ${p.stayNear}. Start and end the day near there.` : undefined,
-    p.cityCenter ? `Sunrise ${sun(p.date, p.cityCenter, 'sunrise')}, sunset ${sun(p.date, p.cityCenter, 'sunset')} (local time).` : undefined,
+    p.cityCenter ? `Sunrise ${sunTime(p.date, p.cityCenter, 'sunrise', p.timeZone) ?? 'unknown'}, sunset ${sunTime(p.date, p.cityCenter, 'sunset', p.timeZone) ?? 'unknown'} (local time).` : undefined,
+    p.mustHave?.length
+      ? `Must include (they love it): ${p.mustHave.map((m) => `a stop for ${momentLabel(m)} with timed_for "${m}"`).join('; ')}. Plan the rest of the day around it.`
+      : undefined,
+    p.foodStops ? `Food: at least ${p.foodStops} food stop${p.foodStops > 1 ? 's' : ''} today, each with a named dish.` : undefined,
+    `Getting around here: ${p.modes.map((m) => (m.name ? `${m.mode} (${m.name})` : m.mode)).join(', ')}. Prices are in ${p.currency}.`,
     p.prefs.group ? `Traveling: ${p.prefs.group}.` : undefined,
     `Pace: ${p.rules.pace ?? p.prefs.pace ?? 'balanced'} (${PACE[p.rules.pace ?? p.prefs.pace ?? 'balanced']}, not counting rides).`,
-    p.rules.budgetPerDayInr ? `Budget: ₹${p.rules.budgetPerDayInr} per person for the day, including entry fees, food and rides.` : undefined,
+    p.rules.budgetPerDay ? `Budget: ${formatMoneyRange(p.rules.budgetPerDay, undefined, p.currency)} per person for the day, including entry fees, food and rides.` : undefined,
     p.rules.notBefore ? `Start no earlier than ${p.rules.notBefore}. Finish by 21:30.` : 'Finish by 21:30.',
     p.prefs.diet ? `Diet: ${DIET[p.prefs.diet]}.` : undefined,
     p.prefs.spice ? `Spice: ${p.prefs.spice}.` : undefined,
@@ -74,11 +87,4 @@ export function requestPrompt(p: PromptInput): string {
     ...p.memories.map((m) => `- [${m.kind}] ${m.text} (${m.evidence})`),
   ];
   return lines.filter((l) => l !== undefined).join('\n');
-}
-
-/** Local (IST) time of sunrise or sunset, "HH:mm". */
-function sun(date: string, at: { lat: number; lng: number }, which: 'sunrise' | 'sunset'): string {
-  const t = getTimes(new Date(`${date}T12:00:00+05:30`), at.lat, at.lng)[which];
-  if (!t || Number.isNaN(t.getTime())) return 'unknown';
-  return new Date(t.getTime() + 5.5 * 3_600_000).toISOString().slice(11, 16);
 }

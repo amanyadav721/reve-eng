@@ -1,0 +1,56 @@
+{
+  "note": "What famous Rishikesh eateries are known for, so the planner can find a dish without Google. Draft from widely published guides: verify each entry on the ground before launch. Never add opening hours here unless someone has checked them.",
+  "places": [
+    {
+      "name": "Chotiwala",
+      "knownFor": [
+        "thali",
+        "north indian",
+        "veg thali"
+      ],
+      "verified": false
+    },
+    {
+      "name": "Little Buddha Cafe",
+      "knownFor": [
+        "cafe",
+        "ganga view",
+        "continental"
+      ],
+      "verified": false
+    },
+    {
+      "name": "The Beatles Cafe",
+      "aka": [
+        "Beatles Cafe"
+      ],
+      "knownFor": [
+        "cafe",
+        "ganga view",
+        "coffee"
+      ],
+      "verified": false
+    },
+    {
+      "name": "Madras Cafe",
+      "knownFor": [
+        "south indian",
+        "dosa",
+        "masala dosa"
+      ],
+      "verified": false
+    },
+    {
+      "name": "Ramana's Organic Cafe",
+      "aka": [
+        "Ramana's Garden"
+      ],
+      "knownFor": [
+        "organic food",
+        "vegan",
+        "healthy food"
+      ],
+      "verified": false
+    }
+  ]
+}

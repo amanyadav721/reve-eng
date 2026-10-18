@@ -13,6 +13,12 @@ describe('dietConflict', () => {
     assert.equal(dietConflict('egg', 'egg bhurji'), undefined);
     assert.ok(dietConflict('veg', 'egg bhurji'));
   });
+  it('ignores what a dish says it leaves out', () => {
+    assert.equal(dietConflict('jain', 'plain jain thali with dal, roti, rice and sweet (no onion garlic or root veg)'), undefined);
+    assert.equal(dietConflict('vegan', 'dairy-free coconut curry, without ghee'), undefined);
+    assert.ok(dietConflict('jain', 'onion pakora, no garlic'), 'the onion pakora still has onion');
+  });
+
   it('catches dairy for vegans and onion for Jains', () => {
     assert.ok(dietConflict('vegan', 'lassi'));
     assert.ok(dietConflict('jain', 'pyaaz kachori'));

@@ -7,6 +7,7 @@ import type { Scenario } from './scenarios.js';
 import { score } from './score.js';
 
 const stats = { turns: 5, submits: 1, tools: {}, promptTokens: 0, completionTokens: 0, ms: 0 };
+const repairs: string[] = [];
 const st = (o: Partial<Stop>): Stop => ({ id: 's', placeId: 'p', name: 'Place', category: 'sight', icon: '📍', startTime: '10:00', durationMin: 60, points: 10, status: 'upcoming', ...o });
 
 const scenario: Scenario = {
@@ -23,6 +24,7 @@ describe('score', () => {
     const r: PlanDayResult = {
       ok: true,
       issues: [],
+      repairs,
       stats,
       stops: [
         st({ name: 'Pyaaz kachori at Rawat', category: 'food', startTime: '12:30', reason: 'You loved **mirchi vada**.' }),
@@ -37,6 +39,7 @@ describe('score', () => {
     const r: PlanDayResult = {
       ok: true,
       issues: [],
+      repairs,
       stats,
       stops: [st({ name: 'Rawat', category: 'food' }), st({ name: 'Amber Fort elephant ride', startTime: '11:00', hop: { mode: 'walk', minutes: 25 } })],
     };

@@ -27,11 +27,11 @@ export const plannerTools: ToolDefinition[] = [
   ),
   fn(
     'get_route',
-    'Travel time, distance and fare range between two places. Use it for every consecutive pair of stops, with the mode you plan to use.',
+    'Travel time, distance and fare range (local currency) between two places, for a mode available in this city. Use it for consecutive stops.',
     {
       from_place_id: { type: 'string' },
       to_place_id: { type: 'string' },
-      mode: { type: 'string', enum: ['walk', 'auto', 'cab', 'metro', 'bus', 'scooter'] },
+      mode: { type: 'string', enum: ['walk', 'auto', 'cab', 'metro', 'bus', 'train', 'scooter'] },
     },
     ['from_place_id', 'to_place_id', 'mode'],
   ),

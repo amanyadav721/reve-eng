@@ -49,7 +49,8 @@ export interface PlacesProvider {
 export type RouteMode = 'walk' | 'drive' | 'two_wheeler' | 'transit';
 
 export interface RoutesProvider {
-  route(q: { from: LatLng; to: LatLng; mode: RouteMode; departAt?: Date }): Promise<{ minutes: number; km: number } | null>;
+  /** `estimated` means no road data: minutes come from distance, not a real route. */
+  route(q: { from: LatLng; to: LatLng; mode: RouteMode; departAt?: Date }): Promise<{ minutes: number; km: number; estimated?: boolean } | null>;
 }
 
 export interface HourlyWeather {

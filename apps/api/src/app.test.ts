@@ -29,7 +29,7 @@ describe('api', () => {
   it('estimates fares', async () => {
     const res = await app.request('/v1/fare?mode=auto&km=4', { headers: dev });
     const body = await res.json();
-    assert.ok(body.minInr > 0 && body.maxInr > body.minInr);
+    assert.ok(body.min > 0 && body.max > body.min);
   });
 
   it('validates plan requests', async () => {

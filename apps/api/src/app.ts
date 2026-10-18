@@ -4,9 +4,13 @@ import { z } from 'zod';
 
 import { requireUser, type AuthVars } from './auth.js';
 import { env } from './env.js';
+import { cityArea, ensureCity } from './places/ensureCity.js';
+import { LocalPlaces } from './providers/local.js';
 import { cityCenter, plannerDeps } from './planner/deps.js';
 import { estimateFare } from './planner/fare.js';
+import { outlineTrip } from './planner/outline.js';
 import { planDay } from './planner/planDay.js';
+import { chat } from './sarvam.js';
 
 const tripPreferences = z.object({
   city: z.string().min(1),
@@ -14,12 +18,13 @@ const tripPreferences = z.object({
   endDate: z.iso.date(),
   arrival: z.object({ mode: z.enum(['flight', 'train', 'bus', 'cab', 'auto', 'walk', 'metro', 'scooter']), time: z.string().regex(/^\d{2}:\d{2}$/) }).optional(),
   group: z.enum(['solo', 'partner', 'friends', 'family', 'parents']).optional(),
-  budgetPerDayInr: z.number().int().positive().optional(),
+  budgetPerDay: z.number().int().positive().optional(),
   pace: z.enum(['chill', 'balanced', 'packed']).optional(),
   interests: z.array(z.string()).max(12).optional(),
   diet: z.enum(['veg', 'nonveg', 'egg', 'jain', 'vegan']).optional(),
   spice: z.enum(['mild', 'medium', 'hot']).optional(),
   language: z.string().optional(),
+  currency: z.string().regex(/^[A-Z]{3}$/).optional(),
 });
 
 const memory = z.object({
@@ -43,9 +48,19 @@ const planDayBody = z.object({
   stayNear: z.string().max(200).optional(),
 });
 
+const outlineBody = z.object({
+  /** Whatever the traveler typed: "Miami", "Japan", "Rajasthan for a week", "somewhere warm". */
+  destination: z.string().min(1).max(200),
+  days: z.number().int().min(1).max(60),
+  startDate: z.iso.date().optional(),
+  preferences: tripPreferences.partial().optional(),
+  memories: z.array(memory).max(100).default([]),
+});
+
 const fareQuery = z.object({
   mode: z.enum(['walk', 'auto', 'cab', 'metro', 'bus', 'train', 'scooter']),
   km: z.coerce.number().min(0).max(500),
+  country: z.string().regex(/^[a-z]{2}$/).default('in'),
 });
 
 export const app = new Hono<AuthVars>();
@@ -72,7 +87,18 @@ v1.get('/me', (c) => c.json({ userId: c.get('userId') }));
 v1.get('/fare', (c) => {
   const q = fareQuery.safeParse(c.req.query());
   if (!q.success) return c.json({ error: 'bad_request', issues: q.error.issues }, 400);
-  return c.json(estimateFare(q.data.mode, q.data.km));
+  const fare = estimateFare(q.data.mode, q.data.km, q.data.country);
+  return fare ? c.json(fare) : c.json({ error: 'no_fare_model', mode: q.data.mode, country: q.data.country }, 404);
+});
+
+// Step one of any trip: where is it? Returns base cities with days, or a question when it's vague.
+v1.post('/trips/outline', async (c) => {
+  const body = outlineBody.safeParse(await c.req.json().catch(() => undefined));
+  if (!body.success) return c.json({ error: 'bad_request', issues: body.error.issues }, 400);
+  if (!env.SARVAM_API_KEY) return c.json({ error: 'not_configured', missing: ['SARVAM_API_KEY'] }, 503);
+  const { destination, days, startDate, preferences, memories } = body.data;
+  const outline = await outlineTrip({ destination, days, startDate, prefs: preferences, memories }, { chat, geocode: (name) => cityArea(name) });
+  return c.json(outline);
 });
 
 // Plans one day. The app calls it once per day of the trip, passing places already used.
@@ -87,11 +113,17 @@ v1.post('/trips/plan-day', async (c) => {
   if (dayNumber > totalDays) return c.json({ error: 'bad_request', message: `the trip has ${totalDays} days` }, 400);
   const date = new Date(Date.parse(prefs.startDate) + (dayNumber - 1) * 86_400_000).toISOString().slice(0, 10);
 
-  const center = await cityCenter(prefs.city, deps.places);
+  // Our own database learns a new city the first time someone plans a trip there (about a minute).
+  const area = deps.places instanceof LocalPlaces ? await ensureCity(prefs.city, deps.places) : await cityArea(prefs.city);
+  const center = area?.center ?? (await cityCenter(prefs.city, deps.places));
   if (!center) return c.json({ error: 'unknown_city', city: prefs.city }, 422);
+  const currency = prefs.currency ?? area?.currency ?? 'INR';
 
-  const result = await planDay({ city: prefs.city, cityCenter: center, date, dayNumber, totalDays, prefs, rules: { notBefore }, memories, avoidPlaceIds, stayNear }, deps);
-  return c.json({ date, dayNumber, ...result }, result.ok ? 200 : 422);
+  const result = await planDay(
+    { city: prefs.city, cityCenter: center, date, dayNumber, totalDays, prefs: { ...prefs, currency }, rules: { notBefore }, memories, avoidPlaceIds, stayNear, country: area?.country, timeZone: area?.timeZone },
+    deps,
+  );
+  return c.json({ date, dayNumber, currency, country: area?.country, timeZone: area?.timeZone, ...result }, result.ok ? 200 : 422);
 });
 
 app.route('/v1', v1);

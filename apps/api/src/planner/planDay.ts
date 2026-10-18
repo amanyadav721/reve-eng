@@ -1,5 +1,8 @@
 import type { Memory, Stop, TripPreferences } from '@tagalong/shared';
 
+import { countryProfile } from '../places/countries.js';
+import { momentStarts, requiredMoments, sunTime } from './moments.js';
+
 import type { LatLng } from '../providers/types.js';
 import type { ChatMessage, ChatRequest, ChatResponse } from '../sarvam.js';
 import { requestPrompt, systemPrompt } from './prompt.js';
@@ -22,6 +25,10 @@ export interface PlanDayInput {
   memories?: Memory[];
   avoidPlaceIds?: string[];
   stayNear?: string;
+  /** ISO 3166 alpha-2, lowercase. Default "in". */
+  country?: string;
+  /** IANA zone of the city. Default Asia/Kolkata. */
+  timeZone?: string;
 }
 
 export interface PlanDayDeps extends Providers {
@@ -46,14 +53,29 @@ export interface PlanDayResult {
   stops: Stop[];
   /** Issues left on the final submission (empty when ok). */
   issues: Issue[];
+  /** What our code changed on its own (dropped a repeat, added lunch…). */
+  repairs: string[];
   error?: string;
   stats: { turns: number; submits: number; tools: Record<string, number>; promptTokens: number; completionTokens: number; ms: number };
 }
 
 export async function planDay(input: PlanDayInput, deps: PlanDayDeps, opts: PlanDayOptions = {}): Promise<PlanDayResult> {
-  const { maxTurns = 30, maxSubmits = 4, maxTokens = 4096, maxToolsPerTurn = 10, maxTools = 70, onEvent } = opts;
+  const { maxTurns = 36, maxSubmits = 5, maxTokens = 4096, maxToolsPerTurn = 10, maxTools = 70, onEvent } = opts;
   const started = Date.now();
-  const rules: DayRules = { pace: input.prefs?.pace, budgetPerDayInr: input.prefs?.budgetPerDayInr, ...input.rules };
+  const rules: DayRules = { pace: input.prefs?.pace, budgetPerDay: input.prefs?.budgetPerDay, ...input.rules };
+  const country = countryProfile(input.country);
+  const currency = input.prefs?.currency ?? country.currency;
+  const timeZone = input.timeZone ?? 'Asia/Kolkata';
+  rules.currency = currency;
+
+  // Moments they love become requirements, pinned to today's real sunrise and sunset.
+  const sunrise = sunTime(input.date, input.cityCenter, 'sunrise', timeZone);
+  const sunset = sunTime(input.date, input.cityCenter, 'sunset', timeZone);
+  const starts = momentStarts(sunrise, sunset);
+  const mustHave = requiredMoments(input.memories ?? [], input.prefs?.interests, input.city).filter((m) => starts[m] !== undefined);
+  // Every day gets a meal; food lovers get more.
+  const pace = rules.pace ?? 'balanced';
+  rules.minFoodStops ??= isFoodie(input.prefs?.interests, input.memories) ? { chill: 2, balanced: 2, packed: 3 }[pace] : 1;
   const session = new PlannerSession(deps, {
     city: input.city,
     cityCenter: input.cityCenter,
@@ -62,6 +84,11 @@ export async function planDay(input: PlanDayInput, deps: PlanDayDeps, opts: Plan
     memories: input.memories ?? [],
     avoidPlaceIds: input.avoidPlaceIds,
     diet: input.prefs?.diet,
+    country: country.code,
+    currency,
+    modes: country.modes,
+    momentStarts: starts,
+    mustHave,
   });
 
   const messages: ChatMessage[] = [
@@ -78,15 +105,20 @@ export async function planDay(input: PlanDayInput, deps: PlanDayDeps, opts: Plan
         memories: input.memories ?? [],
         stayNear: input.stayNear,
         cityCenter: input.cityCenter,
+        currency,
+        timeZone,
+        modes: country.modes.map((mode) => ({ mode, name: country.modeNames?.[mode] })),
+        mustHave,
+        foodStops: rules.minFoodStops,
       }),
     },
   ];
 
   const stats = { turns: 0, submits: 0, tools: session.toolCounts, promptTokens: 0, completionTokens: 0, ms: 0 };
-  let last: { stops: Stop[]; issues: Issue[] } = { stops: [], issues: [] };
+  let last: { stops: Stop[]; issues: Issue[]; repairs: string[] } = { stops: [], issues: [], repairs: [] };
   let nudges = 0;
   let toolsRun = 0;
-  const done = (ok: boolean, error?: string): PlanDayResult => ({ ok, stops: last.stops, issues: ok ? [] : last.issues, error, stats: { ...stats, ms: Date.now() - started } });
+  const done = (ok: boolean, error?: string): PlanDayResult => ({ ok, stops: last.stops, issues: ok ? [] : last.issues, repairs: last.repairs, error, stats: { ...stats, ms: Date.now() - started } });
 
   while (stats.turns < maxTurns) {
     stats.turns++;
@@ -142,7 +174,7 @@ export async function planDay(input: PlanDayInput, deps: PlanDayDeps, opts: Plan
       const parsed = submitPlanArgs.safeParse(safeJson(call.function.arguments));
       if (!parsed.success) {
         const issues: Issue[] = parsed.error.issues.slice(0, 8).map((i) => ({ code: 'unverified_place', message: `${i.path.join('.')}: ${i.message}` }));
-        last = { stops: [], issues };
+        last = { stops: [], issues, repairs: [] };
         onEvent?.({ type: 'submit', attempt: stats.submits, issues });
         messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify({ accepted: false, issues: issues.map((i) => i.message) }) });
       } else {
@@ -157,7 +189,7 @@ export async function planDay(input: PlanDayInput, deps: PlanDayDeps, opts: Plan
             issues: last.issues.map((i) => `${i.message} → ${FIX[i.code]}`),
             // The clock our code computed, so the model can see where travel pushed things.
             schedule: last.stops.map((st, n) => `${n + 1}. ${st.startTime}–${endOf(st)} ${st.name}${st.hop ? ` (after ${st.hop.minutes} min ${st.hop.mode})` : ''}`),
-            hint: 'Fix exactly these, keep everything else, and call submit_plan again. Prefer nearby places over long rides.',
+            hint: 'Fix exactly these, keep everything else, and call submit_plan again. Keep each ride under ~30 minutes by picking places near each other (use near_place_id in search_places).',
           }),
         });
       }
@@ -189,6 +221,12 @@ const FIX: Record<Issue['code'], string> = {
   too_few_stops: 'Add stops until the day matches the pace, filling the afternoon and evening.',
   missing_dish: 'Set dish to the specific dish to eat there.',
   too_late: 'Drop or shorten a stop so the day ends by 22:00.',
+  mode_unavailable: 'Use one of the transport modes listed for this city.',
+  starts_late: 'Begin with morning stops from the start time; keep the sunset or evening highlight for the end of the day.',
+  day_too_short: 'Add stops so the day fills the afternoon and evening, ending with a highlight.',
+  too_few_food_stops: 'Add food stops with named dishes: famous local dishes at the places known for them.',
+  missing_moment: 'Add a stop for it with timed_for set; our code starts it at the right time.',
+  missed_moment: 'Drop or shorten an earlier stop, or pick closer places, so the traveler gets there in time.',
   memory_unused: 'Rewrite one or two reasons to use a specific memory, wrapping the remembered detail in **double asterisks**.',
 };
 
@@ -204,4 +242,10 @@ function safeJson(s: string): unknown {
   } catch {
     return undefined;
   }
+}
+
+const FOOD_WORDS = /\b(food|foodie|street food|cuisine|chaat|seafood|dishes|eat|eating|cafes?|bakery|dessert)\b/i;
+
+function isFoodie(interests: string[] = [], memories: Memory[] = []): boolean {
+  return interests.some((i) => FOOD_WORDS.test(i)) || memories.some((m) => m.kind !== 'skip' && /\b(foodie|loves? (street )?food)\b/i.test(m.text));
 }

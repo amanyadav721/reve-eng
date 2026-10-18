@@ -52,26 +52,37 @@ export class SarvamError extends Error {
 
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
 
-export async function chat(req: ChatRequest, { attempts = 3 } = {}): Promise<ChatResponse> {
+/** Exponential backoff with jitter: ~0.5 s, ~1 s, ~2 s, ~4 s. */
+const backoff = (attempt: number) => new Promise((r) => setTimeout(r, 2 ** (attempt - 1) * 500 + Math.random() * 250));
+
+export async function chat(req: ChatRequest, { attempts = 4 } = {}): Promise<ChatResponse> {
   if (!env.SARVAM_API_KEY) throw new Error('SARVAM_API_KEY is not set');
 
   for (let attempt = 1; ; attempt++) {
-    const res = await fetch(`${BASE_URL}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        // Sarvam documents both header styles; send the same key in each.
-        authorization: `Bearer ${env.SARVAM_API_KEY}`,
-        'api-subscription-key': env.SARVAM_API_KEY,
-      },
-      body: JSON.stringify(req),
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          // Sarvam documents both header styles; send the same key in each.
+          authorization: `Bearer ${env.SARVAM_API_KEY}`,
+          'api-subscription-key': env.SARVAM_API_KEY,
+        },
+        body: JSON.stringify(req),
+        signal: AbortSignal.timeout(120_000),
+      });
+    } catch (err) {
+      // Dropped connections and timeouts are worth another try too.
+      if (attempt >= attempts) throw err;
+      await backoff(attempt);
+      continue;
+    }
 
     if (res.ok) return (await res.json()) as ChatResponse;
 
     const body = await res.text();
     if (!RETRYABLE.has(res.status) || attempt >= attempts) throw new SarvamError(res.status, body);
-    // Exponential backoff with jitter: ~0.5s, ~1s, ~2s.
-    await new Promise((r) => setTimeout(r, 2 ** (attempt - 1) * 500 + Math.random() * 250));
+    await backoff(attempt);
   }
 }

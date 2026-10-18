@@ -6,12 +6,16 @@ export type TransportMode = 'walk' | 'auto' | 'cab' | 'metro' | 'bus' | 'train' 
 
 export type StopStatus = 'done' | 'now' | 'upcoming' | 'skipped';
 
-/** How to get from the previous stop to this one. Fares are always a range, never exact. */
+/**
+ * How to get from the previous stop to this one. Fares are always a range, never exact, in the
+ * trip's currency. `estimated` means no road data yet: minutes come from distance, not a route.
+ */
 export interface Hop {
   mode: TransportMode;
   minutes: number;
-  fareMinInr?: number;
-  fareMaxInr?: number;
+  fareMin?: number;
+  fareMax?: number;
+  estimated?: boolean;
   tip?: string;
 }
 
@@ -26,12 +30,14 @@ export interface Stop {
   /** Local time, 24-hour "HH:mm". */
   startTime: string;
   durationMin: number;
-  costInr?: number;
+  cost?: number;
   openUntil?: string;
   distanceKm?: number;
   hop?: Hop;
   /** Why Laddoo picked this, usually grounded in a memory. */
   reason?: string;
+  /** A stop for a moment at a set time; its start is pinned to that time for the date and place. */
+  moment?: 'sunrise' | 'sunset' | 'evening_aarti';
   points: number;
   status: StopStatus;
 }
@@ -42,6 +48,8 @@ export interface TripDay {
   dayNumber: number;
   date: string;
   city: string;
+  /** ISO 4217 code ("INR", "USD"). Every amount in the day is in this currency. */
+  currency: string;
   stops: Stop[];
 }
 
@@ -88,7 +96,10 @@ export interface TripPreferences {
   endDate: string;
   arrival?: { mode: TransportMode | 'flight'; time: string };
   group?: 'solo' | 'partner' | 'friends' | 'family' | 'parents';
-  budgetPerDayInr?: number;
+  /** Per person per day, excluding stay, in `currency`. */
+  budgetPerDay?: number;
+  /** ISO 4217 code. Defaults to the destination's currency. */
+  currency?: string;
   pace?: 'chill' | 'balanced' | 'packed';
   interests?: string[];
   diet?: 'veg' | 'nonveg' | 'egg' | 'jain' | 'vegan';
@@ -96,10 +107,16 @@ export interface TripPreferences {
   language?: string;
 }
 
-export function formatInrRange(min?: number, max?: number): string | undefined {
+/** "₹40", "₹60–80", "$12–18", "€9". Whole units; no decimals for travel prices. */
+export function formatMoneyRange(min: number | undefined, max: number | undefined, currency = 'INR'): string | undefined {
   if (min === undefined) return undefined;
-  if (max === undefined || max === min) return `₹${min.toLocaleString('en-IN')}`;
-  return `₹${min.toLocaleString('en-IN')}–${max.toLocaleString('en-IN')}`;
+  const whole = Number.isInteger(min) && (max === undefined || Number.isInteger(max));
+  const fmt = new Intl.NumberFormat(currency === 'INR' ? 'en-IN' : 'en', { style: 'currency', currency, minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2 });
+  if (max === undefined || max === min) return fmt.format(min);
+  // "₹60–80": the symbol once, at the front.
+  const lo = fmt.format(min);
+  const hi = fmt.formatToParts(max).filter((p) => p.type !== 'currency' && p.type !== 'literal').map((p) => p.value).join('');
+  return `${lo}–${hi}`;
 }
 
 /** "13:45" → "1:45 PM" */

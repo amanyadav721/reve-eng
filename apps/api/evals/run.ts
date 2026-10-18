@@ -5,7 +5,9 @@ import { parseArgs } from 'node:util';
 
 import type { Memory } from '@tagalong/shared';
 
+import { ensureCity } from '../src/places/ensureCity.js';
 import { cityCenter, plannerDeps } from '../src/planner/deps.js';
+import { LocalPlaces } from '../src/providers/local.js';
 import { planDay, type PlanDayDeps, type PlanDayResult } from '../src/planner/planDay.js';
 import { scenarios, type Scenario } from './scenarios.js';
 import { score, type Score } from './score.js';
@@ -40,11 +42,22 @@ const isoDate = (offset: number) => new Date(Date.now() + offset * 86_400_000 + 
 
 async function runOne(s: Scenario): Promise<{ scenario: Scenario; date: string; result: PlanDayResult; score: Score }> {
   const date = isoDate(s.dayOffset);
-  const center = await cityCenter(s.city, deps.places);
+  const area = deps.places instanceof LocalPlaces ? await ensureCity(s.city, deps.places) : undefined;
+  const center = area?.center ?? (await cityCenter(s.city, deps.places));
   if (!center) throw new Error(`unknown city ${s.city}`);
   const memories: Memory[] = s.memories.map((m, i) => ({ id: `m${i}`, kind: m.kind, text: m.text, evidence: m.evidence ?? 'From earlier trips', source: 'chat', sensitive: false, createdAt: date }));
   const result = await planDay(
-    { city: s.city, cityCenter: center, date, prefs: { ...s.prefs, city: s.city, startDate: date, endDate: date }, rules: { notBefore: s.notBefore }, memories, stayNear: s.stayNear },
+    {
+      city: s.city,
+      cityCenter: center,
+      date,
+      prefs: { ...s.prefs, city: s.city, startDate: date, endDate: date },
+      rules: { notBefore: s.notBefore },
+      memories,
+      stayNear: s.stayNear,
+      country: area?.country,
+      timeZone: area?.timeZone,
+    },
     deps,
     {
       onEvent: args.verbose
@@ -55,6 +68,7 @@ async function runOne(s: Scenario): Promise<{ scenario: Scenario; date: string; 
     ok: false,
     stops: [],
     issues: [],
+    repairs: [],
     error: err instanceof Error ? err.message : String(err),
     stats: { turns: 0, submits: 0, tools: {}, promptTokens: 0, completionTokens: 0, ms: 0 },
   }));
@@ -97,6 +111,7 @@ for (const r of runs) {
     `${Math.round(st.ms / 1000)}s`,
   );
   for (const c of r.score.checks.filter((c) => !c.pass)) console.log(`    ✗ ${c.name}${c.detail ? `: ${c.detail.slice(0, 160)}` : ''}`);
+  for (const fix of r.result.repairs) console.log(`    ↺ ${fix.slice(0, 120)}`);
 }
 
 const valid = runs.filter((r) => r.result.ok).length;

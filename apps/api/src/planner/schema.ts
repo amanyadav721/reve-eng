@@ -12,12 +12,17 @@ export const proposedStop = z.object({
     .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
     .describe('Earliest you want this stop to start, local 24-hour HH:mm (e.g. sunset spots). We compute exact times from travel and opening hours.'),
   duration_min: z.number().int().min(10).max(360),
-  cost_inr: z.number().int().min(0).max(20000).optional().describe('Per person: entry fee, or what the dish/meal costs.'),
+  cost: z.number().min(0).max(10_000_000).optional().describe('Per person, in the local currency: entry fee, or what the dish/meal costs.'),
   hop_mode: z
-    .enum(['walk', 'auto', 'cab', 'metro', 'bus', 'scooter'])
+    .enum(['walk', 'auto', 'cab', 'metro', 'bus', 'train', 'scooter'])
     .optional()
-    .describe('How to get here from the previous stop. Omit for the first stop.'),
-  dish: z.string().optional().describe('Required for food stops: the specific dish to eat here, e.g. "pyaaz kachori".'),
+    .describe('How to get here from the previous stop, using a mode available in this city. Omit for the first stop.'),
+  // Required (not optional): models skip optional fields. Empty for non-food stops.
+  dish: z.string().max(80).describe('Food stops: the specific dish to eat here, e.g. "pyaaz kachori" or "Cuban sandwich". Other stops: "".'),
+  // Required: models skip optional fields. Our code pins tagged stops to the real time.
+  timed_for: z
+    .enum(['none', 'sunrise', 'sunset', 'evening_aarti'])
+    .describe('If this stop is for a moment at a set time, which one. We start it at the right time for this date and place. Otherwise "none".'),
   reason: z.string().min(10).max(320).describe("One or two short sentences in Laddoo's voice. Mention a memory when one applies."),
 });
 
