@@ -6,40 +6,16 @@ import { z } from 'zod';
 
 import { requireUser, type AuthVars } from './auth.js';
 import { env } from './env.js';
-import { cityArea, ensureCity } from './places/ensureCity.js';
-import { LocalPlaces } from './providers/local.js';
-import { cityCenter, plannerDeps } from './planner/deps.js';
+import { cityArea } from './places/ensureCity.js';
+import { resolveCity } from './places/resolve.js';
+import { plannerDeps } from './planner/deps.js';
 import { estimateFare } from './planner/fare.js';
 import { outlineTrip } from './planner/outline.js';
 import { planDay } from './planner/planDay.js';
 import { replanDay } from './planner/replan.js';
+import { travel } from './routes/travel.js';
+import { hhmm, latLng, memory, stop, tripPreferences } from './schemas.js';
 import { chat } from './sarvam.js';
-
-const tripPreferences = z.object({
-  city: z.string().min(1),
-  startDate: z.iso.date(),
-  endDate: z.iso.date(),
-  arrival: z.object({ mode: z.enum(['flight', 'train', 'bus', 'cab', 'auto', 'walk', 'metro', 'scooter']), time: z.string().regex(/^\d{2}:\d{2}$/) }).optional(),
-  group: z.enum(['solo', 'partner', 'friends', 'family', 'parents']).optional(),
-  budgetPerDay: z.number().int().positive().optional(),
-  pace: z.enum(['chill', 'balanced', 'packed']).optional(),
-  interests: z.array(z.string()).max(12).optional(),
-  diet: z.enum(['veg', 'nonveg', 'egg', 'jain', 'vegan']).optional(),
-  spice: z.enum(['mild', 'medium', 'hot']).optional(),
-  language: z.string().optional(),
-  currency: z.string().regex(/^[A-Z]{3}$/).optional(),
-});
-
-const memory = z.object({
-  id: z.string(),
-  kind: z.enum(['fact', 'habit', 'love', 'skip', 'person', 'promise']),
-  text: z.string().max(300),
-  evidence: z.string().max(300),
-  source: z.enum(['quiz', 'chat', 'checkins', 'edits']),
-  icon: z.string().optional(),
-  sensitive: z.boolean(),
-  createdAt: z.string(),
-});
 
 const planDayBody = z.object({
   preferences: tripPreferences,
@@ -49,24 +25,6 @@ const planDayBody = z.object({
   avoidPlaceIds: z.array(z.string()).max(100).default([]),
   notBefore: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   stayNear: z.string().max(200).optional(),
-});
-
-const hhmm = z.string().regex(/^\d{2}:\d{2}$/);
-const latLng = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) });
-
-/** A stop as the app has it. Extra fields (hop, reason, points…) pass through untouched. */
-const stop = z.looseObject({
-  id: z.string().max(100),
-  placeId: z.string().max(200).optional(),
-  name: z.string().max(200),
-  location: latLng.optional(),
-  category: z.enum(['food', 'sight', 'transport', 'nature', 'culture', 'shopping']),
-  icon: z.string().max(20).default(''),
-  points: z.number().int().min(0).default(0),
-  startTime: hhmm,
-  durationMin: z.number().int().min(0).max(24 * 60),
-  moment: z.enum(['sunrise', 'sunset', 'evening_aarti']).optional(),
-  status: z.enum(['done', 'now', 'upcoming', 'skipped']),
 });
 
 const replanBody = z.object({
@@ -108,7 +66,7 @@ app.use(
   cors({
     origin: env.CORS_ORIGINS.split(',').map((o) => o.trim()),
     allowHeaders: ['authorization', 'content-type'],
-    allowMethods: ['GET', 'POST', 'OPTIONS'],
+    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     maxAge: 600,
   }),
 );
@@ -119,7 +77,7 @@ app.get('/health', (c) =>
     configured: {
       clerk: !!env.CLERK_SECRET_KEY,
       sarvam: !!env.SARVAM_API_KEY,
-      supabase: !!(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY),
+      database: !!env.DATABASE_URL,
       googleMaps: !!env.GOOGLE_MAPS_API_KEY,
     },
   }),
@@ -192,12 +150,7 @@ v1.post('/trips/replan', async (c) => {
   return c.json({ date, dayNumber, currency, ...result });
 });
 
-/** Our own database learns a new city the first time someone plans a trip there (about a minute). */
-async function resolveCity(city: string, deps: Exclude<ReturnType<typeof plannerDeps>, { missing: string[] }>) {
-  const area = deps.places instanceof LocalPlaces ? await ensureCity(city, deps.places) : await cityArea(city);
-  const center = area?.center ?? (await cityCenter(city, deps.places));
-  return center ? { center, area } : undefined;
-}
+v1.route('/', travel);
 
 app.route('/v1', v1);
 

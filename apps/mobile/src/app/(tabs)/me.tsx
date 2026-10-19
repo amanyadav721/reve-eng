@@ -1,8 +1,9 @@
 import { useClerk, useUser } from '@clerk/expo';
 import type { Memory } from '@tagalong/shared';
+import { useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeOut, LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -10,7 +11,8 @@ import { Laddoo } from '@/components/Laddoo';
 import { MiniScene } from '@/components/MiniScene';
 import { PillButton } from '@/components/PillButton';
 import { Txt } from '@/components/Txt';
-import { aboutYou, companions, learnedThisWeek, loves, skips, trips } from '@/data/mock';
+import { useApi } from '@/lib/api';
+import { useTrip } from '@/state/trip';
 import { palette } from '@/theme/colors';
 
 const tripLooks: { sky: [string, string]; hill: string }[] = [
@@ -19,16 +21,45 @@ const tripLooks: { sky: [string, string]; hill: string }[] = [
   { sky: ['#F2B33D', '#FCE6CD'], hill: '#3F7A4E' },
 ];
 
-const month = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+const month = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+const WEEK = 7 * 86_400_000;
 
 /** "What Laddoo remembers": every memory, where it came from, and a way to forget it. */
 export default function Me() {
   const insets = useSafeAreaInsets();
   const { user } = useUser();
   const { signOut } = useClerk();
-  const [facts, setFacts] = useState(aboutYou);
-  const [people, setPeople] = useState(companions);
-  const [learnedUndone, setLearnedUndone] = useState(false);
+  const api = useApi();
+  const { trip } = useTrip();
+  const [memories, setMemories] = useState<Memory[]>();
+  const [error, setError] = useState<string>();
+
+  // Fresh every time the tab opens: the quiz, chats and check-ins all add memories.
+  useFocusEffect(
+    useCallback(() => {
+      api<{ memories: Memory[] }>('/v1/memories')
+        .then((r) => (setMemories(r.memories), setError(undefined)))
+        .catch(() => setError("Couldn't load what Laddoo remembers. Pull to try again."));
+    }, [api]),
+  );
+
+  const forget = async (m: Memory) => {
+    setMemories((list) => list?.filter((x) => x.id !== m.id));
+    try {
+      await api(`/v1/memories/${m.id}`, { method: 'DELETE' });
+    } catch {
+      setMemories((list) => (list ? [...list, m] : [m]));
+      setError(`Couldn't forget "${m.text}". Try again.`);
+    }
+  };
+
+  const all = memories ?? [];
+  const facts = all.filter((m) => m.kind === 'fact' || m.kind === 'habit' || m.kind === 'promise');
+  const people = all.filter((m) => m.kind === 'person');
+  const loves = all.filter((m) => m.kind === 'love');
+  const skips = all.filter((m) => m.kind === 'skip');
+  // Something Laddoo noticed on its own (not from the quiz) this week.
+  const learned = all.filter((m) => m.source !== 'quiz' && Date.now() - Date.parse(m.createdAt) < WEEK).at(-1);
 
   return (
     <View style={styles.root}>
@@ -47,18 +78,34 @@ export default function Me() {
         </View>
 
         <View style={{ paddingHorizontal: 16 }}>
-          {!learnedUndone && (
+          {!memories && !error && <ActivityIndicator color={palette.ink} style={{ marginTop: 30 }} />}
+          {error && (
+            <Txt size={13} color={palette.terracotta} style={{ marginTop: 16, textAlign: 'center' }}>
+              {error}
+            </Txt>
+          )}
+          {memories?.length === 0 && (
+            <Card>
+              <View style={styles.row}>
+                <Txt size={14} color={palette.cocoa} style={{ flex: 1 }}>
+                  Nothing yet. Take the trip quiz and I'll remember how you like to travel.
+                </Txt>
+              </View>
+            </Card>
+          )}
+
+          {learned && (
             <Animated.View exiting={FadeOut}>
               <Section title="Learned this week" />
               <View style={styles.learned}>
                 <Laddoo size={40} variant="head" />
                 <View style={{ flex: 1 }}>
                   <Txt size={13.5} color={palette.cream}>
-                    {learnedThisWeek.text}
+                    {learned.text}
                   </Txt>
-                  <Pressable onPress={() => setLearnedUndone(true)} accessibilityRole="button" accessibilityLabel="Undo this memory">
+                  <Pressable onPress={() => forget(learned)} accessibilityRole="button" accessibilityLabel="Undo this memory">
                     <Txt size={11.5} color="#C9AE98" style={{ marginTop: 4 }}>
-                      {learnedThisWeek.evidence} · <Txt size={11.5} weight="semibold" color={palette.cream}>Undo</Txt>
+                      {learned.evidence} · <Txt size={11.5} weight="semibold" color={palette.cream}>Undo</Txt>
                     </Txt>
                   </Pressable>
                 </View>
@@ -66,54 +113,67 @@ export default function Me() {
             </Animated.View>
           )}
 
-          <Section title="About you" />
-          <Card>
-            {facts.map((m, i) => (
-              <MemoryRow key={m.id} memory={m} first={i === 0} onForget={() => setFacts((f) => f.filter((x) => x.id !== m.id))} />
-            ))}
-          </Card>
+          {facts.length > 0 && (
+            <>
+              <Section title="About you" />
+              <Card>
+                {facts.map((m, i) => (
+                  <MemoryRow key={m.id} memory={m} first={i === 0} onForget={() => forget(m)} />
+                ))}
+              </Card>
+            </>
+          )}
 
-          <Section title="You love · you skip" />
-          <View style={styles.tags}>
-            {loves.map((t) => (
-              <View key={t} style={styles.tag}>
-                <Txt size={13} weight="semibold">
-                  {t}
-                </Txt>
+          {(loves.length > 0 || skips.length > 0) && (
+            <>
+              <Section title="You love · you skip" />
+              <View style={styles.tags}>
+                {loves.map((m) => (
+                  <Pressable key={m.id} onLongPress={() => forget(m)} accessibilityHint="Long-press to forget" style={styles.tag}>
+                    <Txt size={13} weight="semibold">
+                      {m.icon ? `${m.icon} ` : ''}
+                      {m.text.replace(/^Loves /, '')}
+                    </Txt>
+                  </Pressable>
+                ))}
+                {skips.map((m) => (
+                  <Pressable key={m.id} onLongPress={() => forget(m)} accessibilityHint="Long-press to forget" style={[styles.tag, styles.tagSkip]}>
+                    <Txt size={13} weight="semibold" color={palette.cocoa} style={{ textDecorationLine: 'line-through' }}>
+                      {m.text.replace(/^Skips /, '')}
+                    </Txt>
+                  </Pressable>
+                ))}
               </View>
-            ))}
-            {skips.map((t) => (
-              <View key={t} style={[styles.tag, styles.tagSkip]}>
-                <Txt size={13} weight="semibold" color={palette.cocoa} style={{ textDecorationLine: 'line-through' }}>
-                  {t}
-                </Txt>
-              </View>
-            ))}
-          </View>
+            </>
+          )}
 
-          <Section title="Travels with" />
-          <Card>
-            {people.map((m, i) => (
-              <MemoryRow key={m.id} memory={m} first={i === 0} iconBg="#E5D0F0" onForget={() => setPeople((p) => p.filter((x) => x.id !== m.id))} />
-            ))}
-          </Card>
+          {people.length > 0 && (
+            <>
+              <Section title="Travels with" />
+              <Card>
+                {people.map((m, i) => (
+                  <MemoryRow key={m.id} memory={m} first={i === 0} iconBg="#E5D0F0" onForget={() => forget(m)} />
+                ))}
+              </Card>
+            </>
+          )}
 
-          <Section title="Trips together" right={`${trips.length} trips`} />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ gap: 10, paddingHorizontal: 20 }}>
-            {trips.map((t, i) => (
-              <View key={t.id} style={styles.trip}>
-                <MiniScene width={128} height={76} sky={tripLooks[i % 3].sky} hill={tripLooks[i % 3].hill} />
+          {trip && (
+            <>
+              <Section title="Your trip" />
+              <View style={styles.trip}>
+                <MiniScene width={128} height={76} sky={tripLooks[0].sky} hill={tripLooks[0].hill} />
                 <View style={{ padding: 10, paddingTop: 8 }}>
                   <Txt size={14} weight="semibold">
-                    {t.city}
+                    {trip.destination}
                   </Txt>
                   <Txt size={12} color={palette.cocoa}>
-                    {t.status === 'active' ? 'Now · Day 2' : `${month(t.startDate)} · ${t.stamps} stamps`}
+                    {month(trip.startDate)} · {trip.days.length} day{trip.days.length === 1 ? '' : 's'}
                   </Txt>
                 </View>
               </View>
-            ))}
-          </ScrollView>
+            </>
+          )}
 
           <Section title="Account" />
           <Card>

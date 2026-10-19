@@ -1,5 +1,5 @@
 import { useAuth } from '@clerk/expo';
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 
 // Talks to our API (apps/api) as the signed-in traveler: the Clerk session token goes in the
 // Authorization header, and the API verifies it with @clerk/backend.
@@ -17,10 +17,13 @@ export class ApiError extends Error {
 
 export function useApi() {
   const { getToken } = useAuth();
+  // Stable across renders, so screens can use it in effects without re-running them.
+  const tokenRef = useRef(getToken);
+  tokenRef.current = getToken;
 
   return useCallback(
-    async <T>(path: string, init: { method?: 'GET' | 'POST'; body?: unknown } = {}): Promise<T> => {
-      const token = await getToken();
+    async <T>(path: string, init: { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown } = {}): Promise<T> => {
+      const token = await tokenRef.current();
       const res = await fetch(`${BASE_URL}${path}`, {
         method: init.method ?? (init.body ? 'POST' : 'GET'),
         headers: {
@@ -33,6 +36,6 @@ export function useApi() {
       if (!res.ok) throw new ApiError(res.status, body);
       return body as T;
     },
-    [getToken],
+    [],
   );
 }

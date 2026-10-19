@@ -16,4 +16,6 @@ psql() { "$PGBIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -v ON_ERROR_STOP=1 -q
 psql -f "$ROOT/supabase/tests/supabase_shim.sql"
 for f in "$ROOT"/supabase/migrations/*.sql; do psql -f "$f"; done
 psql -f "$ROOT/supabase/tests/rls.sql" 2>&1 | sed 's/^psql:[^ ]* NOTICE:  /  /' | grep -v '^$'
+echo "Store checks (the API's data layer, as each traveler):"
+(cd "$ROOT/apps/api" && TEST_DATABASE_URL="postgres://postgres@127.0.0.1:$PORT/postgres" npx tsx --test src/db/store.test.ts 2>&1 | grep -E '^\s*(✔|✖)|^ℹ (pass|fail)|Error|expected|actual')
 echo "Database checks passed."

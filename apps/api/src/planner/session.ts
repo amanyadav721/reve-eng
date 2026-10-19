@@ -405,6 +405,12 @@ export class PlannerSession {
         st.hop = { mode, minutes: 0 };
         continue;
       }
+      // Re-planning and already there (or next door): no ride to show.
+      if (prev.placeId === HERE && r.km < 0.15) {
+        delete st.hop;
+        delete st.distanceKm;
+        continue;
+      }
       const fare = estimateFare(mode, r.km, this.input.country);
       st.hop = { mode, minutes: r.minutes, ...(fare?.max ? { fareMin: fare.min, fareMax: fare.max } : {}), ...(r.estimated ? { estimated: true } : {}) };
       st.distanceKm = r.km;

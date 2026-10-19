@@ -29,12 +29,18 @@ type Props = {
   stop?: Stop;
   dayNumber: number;
   earnedToday: number;
+  currency?: string;
+  /** When the day is done: "5 stops, 2 dishes, 1 sunset". */
+  summary?: string;
+  /** When the day is done: what's next ("Tomorrow: Udaipur"). */
+  tomorrow?: string;
   onCheckIn: () => void;
   onDirections?: () => void;
-  onRestart?: () => void;
+  onNext?: () => void;
+  nextLabel?: string;
 };
 
-export function NowCard({ stop, dayNumber, earnedToday, onCheckIn, onDirections, onRestart }: Props) {
+export function NowCard({ stop, dayNumber, earnedToday, currency, summary, tomorrow, onCheckIn, onDirections, onNext, nextLabel }: Props) {
   return (
     <Animated.View key={stop?.id ?? 'done'} entering={FadeInDown.springify().damping(16)} style={styles.card}>
       {stop ? (
@@ -52,7 +58,7 @@ export function NowCard({ stop, dayNumber, earnedToday, onCheckIn, onDirections,
             {stop.name}
           </Txt>
           <Txt size={13} color={palette.cocoa} style={{ marginTop: 2 }}>
-            {stopMeta(stop)}
+            {stopMeta(stop, currency)}
           </Txt>
           {stop.reason && (
             <View style={styles.memory}>
@@ -78,16 +84,18 @@ export function NowCard({ stop, dayNumber, earnedToday, onCheckIn, onDirections,
             <PointsChip label={`+${earnedToday} pts`} background={palette.sand} />
           </View>
           <Txt size={22} weight="bold" tight style={{ marginTop: 6 }}>
-            5 stops, 2 new dishes, 1 sunset
+            {summary ?? 'All done for today'}
           </Txt>
-          <Txt size={13} color={palette.cocoa} style={{ marginTop: 2 }}>
-            Tomorrow: Udaipur by train at 9:40 AM. Not before 8, as always.
-          </Txt>
+          {tomorrow && (
+            <Txt size={13} color={palette.cocoa} style={{ marginTop: 2 }}>
+              {tomorrow}
+            </Txt>
+          )}
           <View style={styles.memory}>
             <Laddoo size={38} variant="head" />
-            <RichText text="I'll remember you liked **Hawa Mahal more than the fort**. Fewer forts in Udaipur, more lakes." />
+            <RichText text="Rest up. Tell me what you **loved or skipped** today and I'll remember it for next time." />
           </View>
-          <PillButton label="See today's recap" onPress={onRestart} />
+          {onNext && <PillButton label={nextLabel ?? 'Plan another trip'} onPress={onNext} />}
         </>
       )}
     </Animated.View>

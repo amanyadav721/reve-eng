@@ -31,7 +31,11 @@
       "expo-splash-screen",
       "@maplibre/maplibre-react-native",
       "expo-web-browser",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-location",
+        { "locationWhenInUsePermission": "Laddoo uses your location to re-plan the rest of your day from where you are." }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

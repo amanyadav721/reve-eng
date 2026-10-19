@@ -12,6 +12,8 @@ const schema = z.object({
   /** Local development only: accept "Authorization: Dev <user id>" when Clerk isn't set up yet. */
   ALLOW_DEV_AUTH: z.enum(['0', '1']).default('0'),
   SARVAM_API_KEY: z.string().optional(),
+  /** Postgres connection string for the Supabase database (Settings → Database). Server-only. */
+  DATABASE_URL: z.string().optional(),
   SUPABASE_URL: z.string().url().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   GOOGLE_MAPS_API_KEY: z.string().optional(),

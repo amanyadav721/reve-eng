@@ -11,7 +11,6 @@ import { PillButton } from '@/components/PillButton';
 import { PointsChip } from '@/components/Points';
 import { RichText } from '@/components/RichText';
 import { Txt } from '@/components/Txt';
-import { today } from '@/data/mock';
 import { MAP_ATTRIBUTION } from '@/map/style';
 import { TripMap } from '@/map/TripMap';
 import { useTrip } from '@/state/trip';
@@ -23,7 +22,8 @@ const CARD = 236;
 /** The day on a real, interactive map: our own style on OpenStreetMap data, no Google. */
 export default function Explore() {
   const insets = useSafeAreaInsets();
-  const { stops, now, checkIn } = useTrip();
+  const { stops: all, now, checkIn, day } = useTrip();
+  const stops = all.filter((s) => s.status !== 'skipped');
   const [selectedId, setSelectedId] = useState<string | undefined>(now?.id);
   const [fitKey, setFitKey] = useState(0);
   const selected = stops.find((s) => s.id === selectedId) ?? now ?? stops[stops.length - 1];
@@ -44,10 +44,10 @@ export default function Explore() {
       <View style={[styles.header, { top: insets.top + 12 }]} pointerEvents="box-none">
         <View style={styles.titleChip}>
           <Txt size={12} weight="medium" color={palette.cocoa}>
-            Day {today.dayNumber} · {stops.filter((s) => s.status === 'done').length} of {stops.length} done
+            Day {day?.dayNumber ?? 1} · {stops.filter((s) => s.status === 'done').length} of {stops.length} done
           </Txt>
           <Txt size={17} weight="semibold" tight>
-            {today.city}
+            {day?.city ?? 'Your trip'}
           </Txt>
         </View>
         <Pressable onPress={() => setFitKey((k) => k + 1)} style={styles.round} accessibilityRole="button" accessibilityLabel="Show the whole day">

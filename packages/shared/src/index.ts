@@ -105,6 +105,8 @@ export interface TripPreferences {
   diet?: 'veg' | 'nonveg' | 'egg' | 'jain' | 'vegan';
   spice?: 'mild' | 'medium' | 'hot';
   language?: string;
+  /** When they like to start the day, "HH:mm" ("Not before 9"). */
+  dayStart?: string;
 }
 
 /** "₹40", "₹60–80", "$12–18", "€9". Whole units; no decimals for travel prices. */

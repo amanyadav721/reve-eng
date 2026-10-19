@@ -7,9 +7,9 @@ import { stopMeta } from './NowCard';
 import { Txt } from './Txt';
 
 /** A quiet timeline of what's left after the current stop. */
-export function LaterToday({ stops }: { stops: Stop[] }) {
+export function LaterToday({ stops, currency }: { stops: Stop[]; currency?: string }) {
   const rows = stops.length
-    ? stops.map((s) => ({ key: s.id, time: formatTime12(s.startTime).replace(/ (AM|PM)$/, ''), title: s.name, sub: stopMeta(s).replace(/^\S+\s/, '') }))
+    ? stops.map((s) => ({ key: s.id, time: formatTime12(s.startTime).replace(/ (AM|PM)$/, ''), title: s.name, sub: stopMeta(s, currency).replace(/^\S+\s/, '') }))
     : [{ key: 'none', time: '—', title: 'Nothing left today', sub: 'Rest up. Laddoo will brief you at 8 AM.' }];
 
   return (
