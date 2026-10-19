@@ -58,6 +58,33 @@ describe('repairDay', () => {
     assert.match(r.repairs.join(' '), /Added lunch/);
   });
 
+  // The headline sight matters more than a minor stop, whatever its ride or length.
+  const famous = (...ids: string[]) => (s: Stop) => (ids.includes(s.id) ? 2 : 0);
+
+  it('too many stops: drops a minor stop, not the far-off headline sight', async () => {
+    const day = [st('a', '08:00', 60), st('lunch', '12:30', 45, { category: 'food' }), st('b', '10:00', 60), st('City Palace', '14:00', 60, { hop: { mode: 'cab', minutes: 70 } }), st('c', '15:30', 30), st('d', '16:30', 30, { hop: { mode: 'auto', minutes: 25 } })];
+    const r = await repairDay(day, ctx({ importance: famous('City Palace', 'a', 'b', 'c') }));
+    assert.deepEqual(names(r.stops), ['a', 'lunch', 'b', 'City Palace', 'c']);
+    assert.match(r.repairs[0], /Dropped d: too many stops/);
+  });
+
+  it('missed sunset: drops a minor stop before it, not the long famous one', async () => {
+    // City Palace 10:00–13:00, lunch, souvenirs 14:40–17:10: the 17:10 sunset is out of reach.
+    // The old rule dropped the stop costing the most time, City Palace.
+    const day = [st('City Palace', '10:00', 180), st('lunch', '12:30', 60, { category: 'food' }), st('souvenirs', '14:00', 150), st('sunset', '17:00', 60, { moment: 'sunset' })];
+    const r = await repairDay(day, ctx({ importance: famous('City Palace') }));
+    assert.deepEqual(names(r.stops), ['City Palace', 'lunch', 'sunset']);
+    assert.deepEqual(r.missed, []);
+  });
+
+  it('day too late: drops the minor stop, even when the famous one is last', async () => {
+    // b runs 14:00–18:00, so Chokhi Dhani (4 hours) would end at 22:20.
+    const day = [st('a', '09:00', 120), st('lunch', '12:30', 60, { category: 'food' }), st('b', '14:00', 240), st('Chokhi Dhani', '17:00', 240)];
+    const r = await repairDay(day, ctx({ pace: undefined, importance: famous('Chokhi Dhani', 'a') }));
+    assert.deepEqual(names(r.stops), ['a', 'lunch', 'Chokhi Dhani']);
+    assert.match(r.repairs.join(' '), /Dropped b so the day ends by 22:00/);
+  });
+
   it('never drops the only meal the traveler needs, even to end on time', async () => {
     const day = [st('a', '09:00', 60), st('dinner', '21:30', 90, { category: 'food' })];
     const r = await repairDay(day, ctx({ pace: undefined }));

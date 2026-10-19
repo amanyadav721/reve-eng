@@ -139,7 +139,7 @@ function containsName(a: string, b: string): boolean {
 }
 
 function summary(p: PlaceRecord): PlaceSummary {
-  return { placeId: p.id, name: p.name, address: p.address, location: { lat: p.lat, lng: p.lng }, types: [...(p.knownFor ?? []).map((k) => `known for ${k}`), ...p.kinds].slice(0, 6) };
+  return { placeId: p.id, name: p.name, address: p.address, location: { lat: p.lat, lng: p.lng }, rank: p.rank, types: [...(p.knownFor ?? []).map((k) => `known for ${k}`), ...p.kinds].slice(0, 6) };
 }
 
 /**

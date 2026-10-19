@@ -15,6 +15,8 @@ export interface PlaceSummary {
   ratingCount?: number;
   /** 0 (free) to 4 (very expensive). */
   priceLevel?: number;
+  /** Popularity from our own data (see PlaceRecord.rank): landmarks with a Wikidata entry score 4 and up. */
+  rank?: number;
   types: string[];
 }
 

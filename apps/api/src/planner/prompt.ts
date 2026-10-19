@@ -53,6 +53,7 @@ export function systemPrompt(): string {
     '- Practical transport, using only the modes listed for this city: walk under ~1 km, the cheapest ride for short hops, cabs for long or hilly rides, metro or rail where it exists.',
     '- If get_weather shows heat over 35°C or rain over 50%, put indoor or shaded stops in those hours.',
     '- reason: one or two short sentences, specific and a little cheeky. When a memory applies, use it ("You loved the mirchi vada in Jodhpur, so…"). Wrap the remembered detail in **double asterisks**.',
+    '- That example is not this traveler\'s memory. Cite only what is listed under "What Laddoo remembers" and "Loves:"; never make up a dish, trip or place they loved.',
     '',
     'Before calling submit_plan, check:',
     '- Lunch: a food stop with a named local dish between 12:00 and 14:30 if the day runs through midday.',
@@ -75,6 +76,9 @@ export function requestPrompt(p: PromptInput): string {
     p.replan?.remaining.length ? `Still planned (keep what still works, replace the rest): ${p.replan.remaining.join('; ')}.` : undefined,
     p.replan?.lunchDone ? 'They have had lunch.' : undefined,
     p.replan ? 'Use near_place_id with places near them. The first stop should be close.' : undefined,
+    p.replan
+      ? `Fill the time from ${p.replan.now} on: leave no stretch longer than 2 hours with nothing planned (rides count as planned). If a stop is pinned later, like a sunset, add places before it.`
+      : undefined,
     p.stayNear ? `Staying near: ${p.stayNear}. Start and end the day near there.` : undefined,
     p.cityCenter ? `Sunrise ${sunTime(p.date, p.cityCenter, 'sunrise', p.timeZone) ?? 'unknown'}, sunset ${sunTime(p.date, p.cityCenter, 'sunset', p.timeZone) ?? 'unknown'} (local time).` : undefined,
     p.mustHave?.length

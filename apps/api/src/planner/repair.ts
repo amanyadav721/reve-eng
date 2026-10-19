@@ -6,7 +6,8 @@ import { dayEnd, isLunch, MAX_STOPS, missingLunch, toMin } from './validate.js';
 // Code fixes the mechanical problems itself instead of sending them back to the model, which is
 // slow and often fails to converge: too many stops, a loved moment we can't reach, a day that runs
 // past 22:00, or no lunch. It never drops a loved moment, a meal the traveler needs, or a stop they
-// just asked for.
+// just asked for. When it must drop something, minor stops go first: a city's headline sight and
+// the things the traveler loves stay.
 
 export interface RepairContext {
   pace?: TripPreferences['pace'];
@@ -27,6 +28,8 @@ export interface RepairContext {
   findLunch: (stops: Stop[], insertAt: number) => Promise<Stop | undefined>;
   /** Stop ids the traveler asked for just now (the meal when they're hungry): never dropped. */
   keep?: Set<string>;
+  /** How much a stop matters (famous, loved). The least important is dropped first. */
+  importance?: (s: Stop) => number;
 }
 
 export interface RepairResult {
@@ -41,11 +44,14 @@ const MAX_REPAIRS = 8;
 export async function repairDay(input: Stop[], ctx: RepairContext): Promise<RepairResult> {
   let stops = input;
   const repairs: string[] = [];
-  let timed = ctx.schedule(stops);
+  // Re-time from the original "not before" hints, so a dropped stop frees time for the ones after it.
+  const hints = new Map(input.map((s) => [s.id, s.startTime]));
+  const hinted = (list: Stop[]) => list.map((s) => (hints.has(s.id) ? { ...s, startTime: hints.get(s.id)! } : s));
+  let timed = ctx.schedule(hinted(stops));
 
   const retime = async () => {
     await ctx.relink(stops);
-    timed = ctx.schedule(stops);
+    timed = ctx.schedule(hinted(stops));
     stops = timed.stops;
   };
   stops = timed.stops;
@@ -53,10 +59,10 @@ export async function repairDay(input: Stop[], ctx: RepairContext): Promise<Repa
   for (let n = 0; n < MAX_REPAIRS; n++) {
     const places = stops.filter((s) => s.category !== 'transport');
 
-    // 1. Too many stops for the pace: drop the one with the longest ride in (the geography outlier).
+    // 1. Too many stops for the pace: drop the least important, then the longest ride in (the geography outlier).
     const max = ctx.pace ? MAX_STOPS[ctx.pace] : undefined;
     if (max && places.length > max) {
-      const victim = pick(droppable(stops, ctx), (s) => s.hop?.minutes ?? 0);
+      const victim = pick(leastImportant(droppable(stops, ctx), ctx), (s) => s.hop?.minutes ?? 0);
       if (victim) {
         stops = stops.filter((s) => s !== victim);
         repairs.push(`Dropped ${victim.name}: too many stops for a ${ctx.pace} day.`);
@@ -65,12 +71,12 @@ export async function repairDay(input: Stop[], ctx: RepairContext): Promise<Repa
       }
     }
 
-    // 2. A loved moment we can't reach: drop the earlier stop that costs the most time.
+    // 2. A loved moment we can't reach: drop the least important earlier stop, the one costing the most time.
     const late = timed.missed[0];
     if (late) {
       const at = stops.findIndex((s) => s.id === late.stopId);
       const victim = pick(
-        droppable(stops, ctx).filter((s) => stops.indexOf(s) < at),
+        leastImportant(droppable(stops, ctx).filter((s) => stops.indexOf(s) < at), ctx),
         (s) => s.durationMin + (s.hop?.minutes ?? 0),
       );
       if (victim) {
@@ -81,9 +87,12 @@ export async function repairDay(input: Stop[], ctx: RepairContext): Promise<Repa
       }
     }
 
-    // 3. The day runs too late: drop the last ordinary stop.
+    // 3. The day runs too late: drop the least important stop whose removal ends the day sooner, latest first.
     if (dayEnd(stops) > toMin(ctx.notAfter)) {
-      const victim = droppable(stops, ctx).at(-1);
+      const end = dayEnd(stops);
+      const helps = (v: Stop) => dayEnd(ctx.schedule(hinted(stops.filter((s) => s !== v))).stops) < end;
+      const candidates = byImportance(droppable(stops, ctx).reverse(), ctx);
+      const victim = candidates.find(helps) ?? candidates[0];
       if (victim) {
         stops = stops.filter((s) => s !== victim);
         repairs.push(`Dropped ${victim.name} so the day ends by ${ctx.notAfter}.`);
@@ -121,6 +130,21 @@ function droppable(stops: Stop[], ctx: RepairContext): Stop[] {
     if (isLunch(s) && lunches <= 1) return false;
     return true;
   });
+}
+
+/** Least important first; a stable sort keeps the given order among equals. */
+function byImportance(stops: Stop[], ctx: RepairContext): Stop[] {
+  if (!ctx.importance) return stops;
+  const score = new Map(stops.map((s) => [s, ctx.importance!(s)]));
+  return [...stops].sort((a, b) => score.get(a)! - score.get(b)!);
+}
+
+/** The droppable stops that matter least, in day order. All of them when importance is unknown. */
+function leastImportant(stops: Stop[], ctx: RepairContext): Stop[] {
+  if (!ctx.importance || !stops.length) return stops;
+  const score = new Map(stops.map((s) => [s, ctx.importance!(s)]));
+  const low = Math.min(...score.values());
+  return stops.filter((s) => score.get(s) === low);
 }
 
 function pick<T>(items: T[], score: (t: T) => number): T | undefined {

@@ -263,30 +263,75 @@ describe('replanDay', () => {
     assert.deepEqual(names(rest(r.stops)), ['City Palace:now']);
   });
 
-  it('bored: an AI plan that leaves hours empty goes back to the AI', async () => {
+  const scriptedAI = (steps: ((call: (name: string, args: unknown) => ToolCall) => ChatResponse)[]) => {
     let n = 0;
     const call = (name: string, args: unknown): ToolCall => ({ id: `b${++n}`, type: 'function', function: { name, arguments: JSON.stringify(args) } });
-    const reply = (...tool_calls: ToolCall[]): ChatResponse => ({
-      id: 'r',
-      choices: [{ index: 0, finish_reason: 'tool_calls', message: { role: 'assistant', content: null, tool_calls } }],
-      usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 },
-    });
-    const sight = (place_id: string, start_time: string, timed_for = 'none') => ({ place_id, category: 'sight', icon: '📍', start_time, duration_min: 90, dish: '', timed_for, reason: 'A good stop for this traveler, trust me.' });
     const requests: ChatRequest[] = [];
-    const script = [
-      () => reply(call('search_places', { query: 'Nahargarh' }), call('search_places', { query: 'museum' })),
-      // Only the sunset, at 17:10: nearly four hours of nothing from 13:20.
-      () => reply(call('submit_plan', { stops: [sight('p1', '17:10', 'sunset')] })),
-      () => reply(call('submit_plan', { stops: [sight('p2', '13:40'), sight('p1', '17:10', 'sunset')] })),
-    ];
     const chat = async (req: ChatRequest) => {
       requests.push(structuredClone(req));
-      return script[requests.length - 1]();
+      const step = steps[requests.length - 1];
+      if (!step) throw new Error('script ran out');
+      return step(call);
     };
-    const r = await replanDay(base({ trigger: 'bored', now: '13:20' }), { places, routes, chat });
+    return { requests, chat };
+  };
+  const reply = (...tool_calls: ToolCall[]): ChatResponse => ({
+    id: 'r',
+    choices: [{ index: 0, finish_reason: 'tool_calls', message: { role: 'assistant', content: null, tool_calls } }],
+    usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 },
+  });
+  const sight = (place_id: string, start_time: string, timed_for = 'none') => ({ place_id, category: 'sight', icon: '📍', start_time, duration_min: 90, dish: '', timed_for, reason: 'A good stop for this traveler, trust me.' });
+  const lastToolReply = (req: ChatRequest) => {
+    const m = req.messages.at(-1);
+    return String(m && 'content' in m ? m.content : '');
+  };
+
+  it('bored: asks the AI to fill the time, and code fills an empty afternoon with a good place nearby', async () => {
+    const ai = scriptedAI([
+      (call) => reply(call('search_places', { query: 'Nahargarh' }), call('search_places', { query: 'museum' })),
+      // Only the sunset, at 17:10: nearly four hours of nothing from 13:20.
+      (call) => reply(call('submit_plan', { stops: [sight('p1', '17:10', 'sunset')] })),
+    ]);
+    const r = await replanDay(base({ trigger: 'bored', now: '13:20' }), { places, routes, chat: ai.chat });
     assert.equal(r.ok, true, JSON.stringify(r.issues));
-    const feedback = requests[2].messages.at(-1);
-    assert.match(String(feedback && 'content' in feedback ? feedback.content : ''), /Nothing planned for 3\.5 hours/);
-    assert.deepEqual(rest(r.stops).map((s) => s.name), ['Albert Hall Museum', 'Nahargarh Fort']);
+    assert.equal(ai.requests.length, 2, 'accepted on the first submission');
+    const prompt = ai.requests[0].messages.map((m) => ('content' in m ? String(m.content) : '')).join('\n');
+    assert.match(prompt, /Fill the time from 13:20 on/);
+    assert.match(prompt, /every hour until the last stop should have something to do/);
+    const [museum, sunset] = rest(r.stops);
+    assert.equal(museum.name, 'Albert Hall Museum');
+    // Now, plus the ride from where they are.
+    assert.equal(museum.startTime, '13:35');
+    assert.ok(museum.durationMin >= 90, String(museum.durationMin));
+    assert.equal(sunset.moment, 'sunset');
+    assert.ok(r.changes.some((c) => /Added Albert Hall Museum to fill the free time from 13:20/.test(c)), r.changes.join(' | '));
+  });
+
+  it('bored: when code has nothing to fill a gap with, the AI is told exactly when it is', async () => {
+    // Only the sunset spot exists in this town.
+    const onlyNahargarh: PlacesProvider = { search: async () => [PLACES.p_nahargarh], details: places.details };
+    const ai = scriptedAI([
+      (call) => reply(call('search_places', { query: 'Nahargarh' })),
+      (call) => reply(call('submit_plan', { stops: [sight('p1', '17:10', 'sunset')] })),
+      (call) => reply(call('submit_plan', { stops: [sight('p1', '17:10', 'sunset')] })),
+    ]);
+    const r = await replanDay(base({ trigger: 'bored', now: '13:20' }), { places: onlyNahargarh, routes, chat: ai.chat }).catch(() => undefined);
+    assert.equal(r, undefined, 'the AI is asked again');
+    const feedback = lastToolReply(ai.requests[2]);
+    assert.match(feedback, /Nothing planned for 3\.5 hours, from 13:20 to 16:55, before \\"Nahargarh Fort\\"/);
+    assert.match(feedback, /Add a stop near where they are now that starts around 13:20 and ends by 16:55/);
+    assert.match(feedback, /search_places with near_place_id/);
+  });
+
+  it('bored: code never fills a gap with a place that would cost the loved sunset', async () => {
+    // A famous night bazaar that only opens at 16:00: two hours there would run past the 17:10 sunset.
+    const bazaar: PlaceDetails = { placeId: 'p_bazaar', name: 'Night Bazaar', location: { lat: 26.925, lng: 75.82 }, types: ['market'], rank: 6, regularHours: daily(16, 23) };
+    const withBazaar: PlacesProvider = { search: async () => [PLACES.p_nahargarh, bazaar], details: async (id) => (id === 'p_bazaar' ? bazaar : places.details(id)) };
+    const ai = scriptedAI([
+      (call) => reply(call('search_places', { query: 'Nahargarh' })),
+      (call) => reply(call('submit_plan', { stops: [sight('p1', '17:10', 'sunset')] })),
+    ]);
+    await replanDay(base({ trigger: 'bored', now: '13:20' }), { places: withBazaar, routes, chat: ai.chat }).catch(() => undefined);
+    assert.match(lastToolReply(ai.requests[2]), /long|Nothing planned for 3\.5 hours/);
   });
 });
