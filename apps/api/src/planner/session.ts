@@ -5,11 +5,13 @@ import { similarity } from '../providers/text.js';
 import type { LatLng, PlaceDetails, PlaceSummary, PlacesProvider, RouteMode, RoutesProvider, SearchProvider, WeatherProvider } from '../providers/types.js';
 import { dietConflict } from './diet.js';
 import { estimateFare } from './fare.js';
+import { fame, importance, knownFor, lovedMatch, lovesOf, mealQuality } from './importance.js';
 import type { ProposedStop } from './schema.js';
 import { momentLabel, type Moment } from './moments.js';
+import { inventedClaims, knownAbout, withoutInventedClaims } from './reasons.js';
 import { repairDay } from './repair.js';
 import { schedule } from './schedule.js';
-import { validateDay, type DayRules, type Issue, type PlaceFacts } from './validate.js';
+import { dayEnd, validateDay, type DayRules, type Issue, type PlaceFacts } from './validate.js';
 
 // One planning conversation. Runs the model's tool calls against real providers and keeps every
 // fact it fetched, so the submitted plan can be checked against what was actually returned.
@@ -27,6 +29,9 @@ export interface SessionInput {
   date: string;
   rules: DayRules;
   memories: Memory[];
+  /** Quiz interests ("history", "street food"): what they love, besides memories. */
+  interests?: string[];
+  spice?: TripPreferences['spice'];
   /** Places used on earlier days of the trip. */
   avoidPlaceIds?: string[];
   diet?: TripPreferences['diet'];
@@ -63,6 +68,9 @@ export class PlannerSession {
   readonly details = new Map<string, PlaceDetails>();
   private readonly routes = new Map<string, { minutes: number; km: number; estimated?: boolean } | null>();
   readonly toolCounts: Record<string, number> = {};
+  /** Words from what the traveler told us, which reasons may cite. */
+  private readonly known: Set<string>;
+  private readonly loves: string[];
   // The model sees short IDs ("p7"). Long provider IDs ("ovt:48a6…", "ChIJ…") get garbled in generation.
   private readonly realOf = new Map<string, string>();
   private readonly aliasOf = new Map<string, string>();
@@ -87,6 +95,27 @@ export class PlannerSession {
     readonly input: SessionInput,
   ) {
     if (input.origin) this.found.set(HERE, { placeId: HERE, name: 'where you are', location: input.origin, types: [] });
+    this.known = knownAbout(input.memories, { interests: input.interests, spice: input.spice });
+    this.loves = lovesOf(input.interests, input.memories);
+  }
+
+  /**
+   * Drops the sentences of each reason that claim a love we don't know about. Used when the model
+   * already had a chance to fix them and that's all that's left. False when a reason would be left
+   * empty, or the day would lose its only remembered detail.
+   */
+  scrubReasons(stops: Stop[]): boolean {
+    const fixed = stops.map((s) => (s.reason && inventedClaims(s.reason, this.known).length ? withoutInventedClaims(s.reason, this.known) : s.reason));
+    if (fixed.some((r, i) => r === undefined && stops[i].reason)) return false;
+    if (!this.input.partial && this.input.memories.length && !fixed.some((r) => r?.includes('**'))) return false;
+    stops.forEach((s, i) => (s.reason = fixed[i]));
+    return true;
+  }
+
+  /** How much a stop matters to this traveler: famous sights and things they love rank high. */
+  importance(s: Stop): number {
+    const place = s.placeId ? (this.details.get(s.placeId) ?? this.found.get(s.placeId)) : undefined;
+    return importance(s, place, this.loves);
   }
 
   /** Loads the places of an existing plan, so it can be re-timed and checked without the model. */
@@ -261,6 +290,14 @@ export class PlannerSession {
         const conflict = dietConflict(this.input.diet, p.dish ?? '');
         if (conflict) issues.push({ code: 'diet_mismatch', stopId: id, message: `Stop ${i + 1} (${p.dish ?? 'food'}) ${conflict}, but the traveler's diet is ${this.input.diet}.` });
       }
+      const invented = inventedClaims(p.reason, this.known);
+      if (invented.length) {
+        issues.push({
+          code: 'invented_preference',
+          stopId: id,
+          message: `Stop ${i + 1}'s reason claims the traveler loves ${invented.map((c) => `"${c}"`).join(' and ')}, but they never told us that.`,
+        });
+      }
       const mode = (p.hop_mode ?? defaultMode(this.input.modes)) as TransportMode;
       if (stops.length && !this.input.modes.includes(mode)) {
         issues.push({ code: 'mode_unavailable', stopId: id, message: `Stop ${i + 1}: "${mode}" isn't available here (use ${this.input.modes.join(', ')}).` });
@@ -317,6 +354,7 @@ export class PlannerSession {
       schedule: (list) => schedule(list, facts, { notBefore: this.input.rules.notBefore, momentStarts: this.input.momentStarts }),
       relink: (list) => this.relink(list),
       findLunch: (list, at) => this.findLunch(list, at, facts),
+      importance: (s) => this.importance(s),
     });
     let repaired = await repair(stops);
 
@@ -344,6 +382,8 @@ export class PlannerSession {
     }
     stops = repaired.stops;
     repairs.push(...repaired.repairs);
+    // Re-planning with the AI: hours with nothing to do get a good place nearby, from code.
+    if (this.input.fillGaps) stops = await this.fillGaps(stops, facts, repairs);
 
     // ── 3. Validate what's left ─────────────────────────────────────────────
     for (const m of repaired.missed) {
@@ -356,13 +396,14 @@ export class PlannerSession {
       }
     }
     if (this.input.fillGaps) {
-      let free = this.input.rules.notBefore ? toMinutes(this.input.rules.notBefore) : undefined;
-      for (const st of stops) {
-        const leave = toMinutes(st.startTime) - (st.hop?.minutes ?? 0);
-        if (free !== undefined && leave - free > MAX_GAP_MIN) {
-          issues.push({ code: 'long_gap', stopId: st.id, message: `Nothing planned for ${Math.round((leave - free) / 30) / 2} hours before "${st.name}".` });
-        }
-        free = toMinutes(st.startTime) + st.durationMin;
+      for (const g of this.longGaps(stops)) {
+        const st = stops[g.at];
+        const after = g.at > 0 ? `"${stops[g.at - 1].name}"` : 'where they are now';
+        issues.push({
+          code: 'long_gap',
+          stopId: st.id,
+          message: `Nothing planned for ${Math.round((g.to - g.from) / 30) / 2} hours, from ${fmt(g.from)} to ${fmt(g.to)}, before "${st.name}". Add a stop near ${after} that starts around ${fmt(g.from)} and ends by ${fmt(g.to)}.`,
+        });
       }
     }
     if (this.input.indoors) {
@@ -373,7 +414,8 @@ export class PlannerSession {
     issues.push(...validateDay(stops, facts, partial ? { ...this.input.rules, pace: undefined, minFoodStops: undefined, budgetPerDay: undefined, lunchDone: this.input.lunchDone, activeFrom: this.input.rules.notBefore } : this.input.rules));
     // The product promise: Laddoo remembers, and shows it.
     if (!partial && this.input.memories.length && !stops.some((s) => s.reason?.includes('**'))) {
-      issues.push({ code: 'memory_unused', message: 'No reason uses what we remember about the traveler.' });
+      const quotable = this.input.memories.slice(0, 4).map((m) => `"${m.text}"`).join(', ');
+      issues.push({ code: 'memory_unused', message: `No reason uses what we remember about the traveler. Use one of these: ${quotable}.` });
     }
     return { stops, issues, repairs, letGo };
   }
@@ -422,7 +464,7 @@ export class PlannerSession {
    * places known for a dish, then proper restaurants, then distance. Used for "I'm hungry".
    */
   async foodOptions(anchor: LatLng, atMin: number, limit = 3, exclude: Set<string> = new Set()): Promise<Stop[]> {
-    const eatery = (p: PlaceSummary) => p.types.some((t) => /restaurant|cafe|food|thali|dhaba|bakery|eatery|known for|diner|bistro|canteen|sweets|confectionery/i.test(t));
+    const eatery = (p: PlaceSummary) => isEatery(p) || p.types.some((t) => /sweets|confectionery/i.test(t));
     for (const q of ['restaurant', 'cafe', 'street food']) {
       const results = await this.providers.places.search({ text: `${q}, ${this.input.city}`, center: anchor, radiusM: 1500, limit: 8 });
       for (const r of results) this.found.set(r.placeId, r);
@@ -442,7 +484,7 @@ export class PlannerSession {
       const knownFor = place.types.find((t) => t.startsWith('known for '))?.slice('known for '.length);
       const fits = knownFor && !dietConflict(this.input.diet, knownFor);
       const dish = fits ? knownFor! : mealFor(atMin, this.input.country, this.input.diet);
-      const score = (fits ? 3 : 0) + (open ? 1 : 0) + (/restaurant|thali|cafe/i.test(place.types.join(' ')) ? 0.5 : 0) - dist(place.location, anchor) / 1000;
+      const score = mealQuality(place, (dish) => !dietConflict(this.input.diet, dish), this.input.diet) + (open ? 1 : 0) - dist(place.location, anchor) / 1000;
       scored.push({
         score,
         stop: {
@@ -464,25 +506,34 @@ export class PlannerSession {
     return scored.sort((a, b) => b.score - a.score).slice(0, limit).map((x) => x.stop);
   }
 
-  /** A lunch near the stop before `at`: an eatery the model already found, or a quick search. */
+  /**
+   * A lunch near the stop before `at`, from eateries the model already found plus a quick search:
+   * a place known for a dish that fits the diet first, then a proper restaurant, never the nearest
+   * fast-food counter just because it's closest.
+   */
   private async findLunch(stops: Stop[], at: number, facts: Record<string, PlaceFacts>): Promise<Stop | undefined> {
     const anchor = (at === 0 && this.input.origin) || (stops[at - 1] ?? stops[at])?.location;
     if (!anchor) return undefined;
-    const used = new Set(stops.map((s) => s.placeId));
-    const eatery = (p: PlaceSummary) => p.types.some((t) => /restaurant|cafe|food|thali|dhaba|bakery|eatery|known for|diner|bistro|canteen/i.test(t));
-    let candidates = [...this.found.values()].filter((p) => !used.has(p.placeId) && eatery(p) && near(p.location, anchor, 2500));
-    if (!candidates.length) {
-      const results = await this.providers.places.search({ text: `restaurant, ${this.input.city}`, center: anchor, radiusM: 2000, limit: 8 });
-      for (const r of results) this.found.set(r.placeId, r);
-      candidates = results.filter((p) => !used.has(p.placeId));
+    const used = new Set([...stops.map((s) => s.placeId), ...(this.input.avoidPlaceIds ?? [])]);
+    const fits = (dish: string) => !dietConflict(this.input.diet, dish);
+    const quality = (p: PlaceSummary) => mealQuality(p, fits, this.input.diet) - dist(p.location, anchor) / 1000;
+    const pool = () => [...this.found.values()].filter((p) => p.placeId !== HERE && !used.has(p.placeId) && isEatery(p) && near(p.location, anchor, 2500));
+    // Nothing good in what the model found: look around for a proper lunch.
+    if (!pool().some((p) => quality(p) >= 1)) {
+      for (const q of ['restaurant', 'thali']) {
+        const results = await this.providers.places.search({ text: `${q}, ${this.input.city}`, center: anchor, radiusM: 2000, limit: 8 });
+        for (const r of results) if (!this.found.has(r.placeId)) this.found.set(r.placeId, r);
+      }
     }
-    const byDistance = candidates.sort((a, b) => dist(a.location, anchor) - dist(b.location, anchor));
-    for (const place of byDistance.slice(0, 4)) {
+    const best = pool().sort((a, b) => quality(b) - quality(a));
+    for (const place of best.slice(0, 6)) {
       const d = await this.loadDetails(place.placeId);
       const f = this.factsOf(d);
       if (f.shut) continue;
-      const knownFor = place.types.find((t) => t.startsWith('known for '))?.slice('known for '.length);
-      const dish = knownFor && !dietConflict(this.input.diet, knownFor) ? knownFor : defaultLunch(this.input.country, this.input.diet);
+      // Open for a 45-minute lunch somewhere between 12:00 and 15:00, when hours are listed.
+      if (f.hours !== 'unknown' && !f.hours.some((h) => Math.max(toMinutes(h.open), 12 * 60) + 45 <= Math.min(toMinutes(h.close), 15 * 60))) continue;
+      const famousFor = knownFor(place);
+      const dish = famousFor && fits(famousFor) ? famousFor : defaultLunch(this.input.country, this.input.diet);
       facts[place.placeId] = f;
       return {
         id: `lunch-${place.placeId}`,
@@ -494,12 +545,116 @@ export class PlannerSession {
         startTime: '12:30',
         durationMin: 45,
         hop: { mode: defaultMode(this.input.modes), minutes: 0 },
-        reason: `Lunch break close to where you'll be, so the afternoon doesn't run on an empty stomach.`,
+        reason:
+          famousFor && fits(famousFor)
+            ? `${d.name} is known for its ${famousFor}, and it's close to where you'll be at lunchtime.`
+            : `A proper sit-down lunch close to where you'll be, so the afternoon doesn't run on an empty stomach.`,
         points: POINTS.food,
         status: 'upcoming',
       };
     }
     return undefined;
+  }
+
+  /** Free stretches longer than MAX_GAP_MIN before a stop, counting from "now" and the ride there. */
+  private longGaps(stops: Stop[]): { at: number; from: number; to: number }[] {
+    const out: { at: number; from: number; to: number }[] = [];
+    let free = this.input.rules.notBefore ? toMinutes(this.input.rules.notBefore) : undefined;
+    for (const [at, st] of stops.entries()) {
+      const leave = toMinutes(st.startTime) - (st.hop?.minutes ?? 0);
+      if (free !== undefined && leave - free > MAX_GAP_MIN) out.push({ at, from: free, to: leave });
+      free = toMinutes(st.startTime) + st.durationMin;
+    }
+    return out;
+  }
+
+  /**
+   * Fills long empty stretches with a good place near where the traveler will be: something they
+   * love or a famous sight, open then, not already done today. Only keeps an addition that leaves
+   * every loved moment reachable and the day ending on time.
+   */
+  private async fillGaps(input: Stop[], facts: Record<string, PlaceFacts>, repairs: string[]): Promise<Stop[]> {
+    let stops = input;
+    const timed = (list: Stop[]) => schedule(list, facts, { notBefore: this.input.rules.notBefore, momentStarts: this.input.momentStarts });
+    const notAfter = toMinutes(this.input.rules.notAfter ?? '22:00');
+    const tried = new Set<string>();
+    for (let n = 0; n < 3; n++) {
+      const gap = this.longGaps(stops)[0];
+      if (!gap) break;
+      const anchor = gap.at > 0 ? stops[gap.at - 1] : undefined;
+      const from = anchor?.location ?? this.input.origin;
+      if (!from) break;
+      const missedBefore = timed(stops).missed.length;
+      let added: Stop[] | undefined;
+      for (const place of await this.fillCandidates(from, stops, tried)) {
+        tried.add(place.placeId);
+        const d = await this.loadDetails(place.placeId);
+        const f = this.factsOf(d);
+        if (f.shut) continue;
+        facts[place.placeId] = f;
+        // Most of the gap, leaving room for the rides either side.
+        const durationMin = Math.max(45, Math.min(120, Math.round((gap.to - gap.from - 45) / 5) * 5));
+        const stop = this.fillStop(d, fmt(gap.from), durationMin, anchor);
+        const list = [...stops.slice(0, gap.at), stop, ...stops.slice(gap.at)];
+        await this.relink(list);
+        const t = timed(list);
+        const placed = t.stops.find((s) => s.id === stop.id)!;
+        const gapsBefore = this.longGaps(stops).length;
+        if (closedOnArrival(placed, facts) || t.missed.length > missedBefore || dayEnd(t.stops) > Math.max(notAfter, dayEnd(stops)) || this.longGaps(t.stops).length > gapsBefore) continue;
+        added = t.stops;
+        repairs.push(`Added ${d.name} to fill the free time from ${fmt(gap.from)}.`);
+        break;
+      }
+      if (!added) {
+        await this.relink(stops);
+        break;
+      }
+      stops = added;
+    }
+    return stops;
+  }
+
+  /** Places to fill a gap with, best first: loved and famous, close by, indoors when it rains. */
+  private async fillCandidates(at: LatLng, stops: Stop[], tried: Set<string>): Promise<PlaceSummary[]> {
+    const queries = [...(this.input.interests ?? []).filter((i) => !FOOD_INTEREST.test(i)).slice(0, 3), 'attraction', 'museum', 'market'];
+    for (const q of queries) {
+      const results = await this.providers.places.search({ text: `${q}, ${this.input.city}`, center: at, radiusM: 3000, limit: 8 });
+      for (const r of results) if (!this.found.has(r.placeId)) this.found.set(r.placeId, r);
+    }
+    const used = new Set([...stops.map((s) => s.placeId), ...(this.input.avoidPlaceIds ?? [])]);
+    const score = (p: PlaceSummary) => 2 * fame(p) + (lovedMatch(p, this.loves) ? 2 : 0) - dist(p.location, at) / 1000;
+    return [...this.found.values()]
+      .filter((p) => p.placeId !== HERE && !used.has(p.placeId) && !tried.has(p.placeId) && !isEatery(p) && !justLodging(p) && near(p.location, at, 3500))
+      .filter((p) => !this.input.indoors || !OUTDOORS.test([p.name, ...p.types].join(' ')))
+      .sort((a, b) => score(b) - score(a))
+      .slice(0, 5);
+  }
+
+  private fillStop(d: PlaceDetails, startTime: string, durationMin: number, after: Stop | undefined): Stop {
+    const kinds = [d.name, ...d.types].join(' ');
+    const category: StopCategory = /museum|gallery|temple|mandir|church|mosque|ghat|ashram|haveli|cultural/i.test(kinds)
+      ? 'culture'
+      : /market|bazaar|mall|shopping|handicraft/i.test(kinds)
+        ? 'shopping'
+        : /park|garden|lake|beach|nature|waterfall/i.test(kinds)
+          ? 'nature'
+          : 'sight';
+    const love = lovedMatch(d, (this.input.interests ?? []).filter((i) => !FOOD_INTEREST.test(i)));
+    const why = knownFor(d) ? `${d.name} is known for ${knownFor(d)}` : fame(d) === 2 ? `${d.name} is one of ${this.input.city}'s best-known sights` : `${d.name} is close by`;
+    return {
+      id: `fill-${d.placeId}`,
+      placeId: d.placeId,
+      name: d.name,
+      location: d.location,
+      category,
+      icon: { culture: '🏛️', shopping: '🛍️', nature: '🌿', sight: '📍' }[category as 'culture' | 'shopping' | 'nature' | 'sight'],
+      startTime,
+      durationMin,
+      hop: { mode: defaultMode(this.input.modes), minutes: 0 },
+      reason: `${why}${love ? `, and you said you love ${love}` : ''}. A good way to spend the free time${after ? ` after ${shortName(after)}` : ''}.`,
+      points: POINTS[category],
+      status: 'upcoming',
+    };
   }
 }
 
@@ -528,6 +683,21 @@ function defaultLunch(country: string, diet: TripPreferences['diet']): string {
 
 /** Re-planning: longer than this with nothing to do feels like a broken plan. */
 const MAX_GAP_MIN = 150;
+
+function isEatery(p: PlaceSummary): boolean {
+  return p.types.some((t) => /restaurant|cafe|food|thali|dhaba|bakery|eatery|known for|diner|bistro|canteen/i.test(t));
+}
+
+/** Food interests are about meals, not places to fill an afternoon with. */
+const FOOD_INTEREST = /food|eat|cuisine|caf|dish|seafood/i;
+/** Hotels and guest houses, unless they are also the sight (City Palace is partly a hotel). */
+function justLodging(p: PlaceSummary): boolean {
+  const kinds = p.types.join(' ');
+  return /\b(hotel|lodging|hostel|guest_?house|resort)\b/i.test(kinds) && !/attraction|castle|palace|fort|museum|monument|historic|temple/i.test(kinds);
+}
+
+const fmt = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+const shortName = (s: Stop) => s.name.split(' at ').pop()!;
 
 const OUTDOORS = /\b(view ?point|viewpoint|sunset point|park|garden|beach|ghat|lake|trail|hike|zoo|stepwell|baori|open[- ]air|nature reserve|waterfall)\b/i;
 

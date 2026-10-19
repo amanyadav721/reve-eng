@@ -45,7 +45,8 @@ export type IssueCode =
   | 'missing_moment'
   | 'missed_moment'
   | 'outdoors_in_rain'
-  | 'long_gap';
+  | 'long_gap'
+  | 'invented_preference';
 
 export interface Issue {
   code: IssueCode;

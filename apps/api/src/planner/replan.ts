@@ -163,7 +163,7 @@ async function replanWithAI(
   const instruction =
     input.trigger === 'rain'
       ? `It's raining now${input.note ? ` (${input.note})` : ''}. Swap outdoor stops (beaches, viewpoints, gardens, ghats, open-air markets, walks) for indoor ones nearby: museums, palace interiors, cafés, covered markets, temples. Keep indoor stops that still work. There's no sunset or sunrise to see in the rain, so skip those.`
-      : `The traveler is bored with the plan${input.note ? ` ("${input.note}")` : ''}. Suggest something more fun nearby for the next few hours, based on what they love. Keep meals and loved moments.`;
+      : `The traveler is bored with the plan${input.note ? ` ("${input.note}")` : ''}. Suggest something more fun nearby for the next few hours, based on what they love. Plan stops back to back from now: every hour until the last stop should have something to do. Keep meals and loved moments.`;
 
   const result = await planDay(
     {
@@ -214,6 +214,8 @@ function sessionFor(input: ReplanInput, deps: PlanDayDeps, done: Stop[]): Planne
     date: input.date,
     rules: { pace: input.prefs?.pace, budgetPerDay: input.prefs?.budgetPerDay, ...input.rules, notBefore: input.now, currency: input.prefs?.currency ?? country.currency },
     memories: input.memories ?? [],
+    interests: input.prefs?.interests,
+    spice: input.prefs?.spice,
     avoidPlaceIds: done.map((s) => s.placeId).filter((x): x is string => !!x),
     diet: input.prefs?.diet,
     country: country.code,

@@ -193,6 +193,35 @@ describe('planDay', () => {
     assert.equal(result.stops[2].moment, 'sunset');
   });
 
+  it('sends back a reason that invents a love the traveler never gave', async () => {
+    const memories = [{ id: 'm', kind: 'love' as const, text: 'Loved the mirchi vada in Jodhpur', evidence: 'Jodhpur, Mar 2026', source: 'chat' as const, sensitive: false, createdAt: '2026-01-01' }];
+    const model = scripted([
+      () => reply(call('search_places', { query: 'Hawa Mahal' })),
+      () => reply(call('submit_plan', { stops: [stop('p_hawa', '10:00', { reason: 'Since you love forts, this pink palace is a must. You loved the **mirchi vada in Jodhpur** too.' })] })),
+      () => reply(call('submit_plan', { stops: [stop('p_hawa', '10:00', { reason: 'You loved the **mirchi vada in Jodhpur**; the stalls below sell it hot.' })] })),
+    ]);
+    const result = await planDay({ ...input, memories, prefs: { interests: ['history'] } }, { chat: model.chat, places, routes });
+    assert.equal(result.ok, true, result.issues.map((i) => i.message).join(' | '));
+    assert.equal(result.stats.submits, 2);
+    const feedback = model.requests[2].messages.at(-1);
+    assert.match(String(feedback && 'content' in feedback ? feedback.content : ''), /Stop 1's reason claims the traveler loves \\"forts\\", but they never told us that\. → Rewrite that reason without it/);
+  });
+
+  it('takes made-up loves out itself when the model repeats them after being told', async () => {
+    const memories = [{ id: 'm', kind: 'love' as const, text: 'Loved the mirchi vada in Jodhpur', evidence: 'Jodhpur, Mar 2026', source: 'chat' as const, sensitive: false, createdAt: '2026-01-01' }];
+    const invented = stop('p_hawa', '10:00', { reason: 'Since you love forts, this is a must. You loved the **mirchi vada in Jodhpur**, and the stalls below sell it.' });
+    const model = scripted([
+      () => reply(call('search_places', { query: 'Hawa Mahal' })),
+      () => reply(call('submit_plan', { stops: [invented] })),
+      () => reply(call('submit_plan', { stops: [invented] })),
+    ]);
+    const result = await planDay({ ...input, memories }, { chat: model.chat, places, routes });
+    assert.equal(result.ok, true, result.issues.map((i) => i.message).join(' | '));
+    assert.equal(result.stats.submits, 2);
+    assert.equal(result.stops[0].reason, 'You loved the **mirchi vada in Jodhpur**, and the stalls below sell it.');
+    assert.ok(result.repairs.some((r) => /claimed loves/.test(r)));
+  });
+
   it('answers tool errors instead of throwing', async () => {
     const model = scripted([
       () => reply(call('place_details', { place_id: 'p_hawa' }), call('get_route', { from_place_id: 'a', to_place_id: 'b', mode: 'auto' })),

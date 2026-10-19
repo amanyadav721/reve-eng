@@ -109,6 +109,8 @@ export async function planDay(input: PlanDayInput, deps: PlanDayDeps, opts: Plan
     date: input.date,
     rules,
     memories: input.memories ?? [],
+    interests: input.prefs?.interests,
+    spice: input.prefs?.spice,
     diet: input.prefs?.diet,
     country: country.code,
     currency,
@@ -156,6 +158,7 @@ export async function planDay(input: PlanDayInput, deps: PlanDayDeps, opts: Plan
   const stats = { turns: 0, submits: 0, tools: session.toolCounts, promptTokens: 0, completionTokens: 0, ms: 0 };
   let last: { stops: Stop[]; issues: Issue[]; repairs: string[] } = { stops: [], issues: [], repairs: [] };
   let nudges = 0;
+  let inventedSentBack = false;
   let toolsRun = 0;
   const done = (ok: boolean, error?: string): PlanDayResult => ({ ok, stops: last.stops, issues: ok ? [] : last.issues, repairs: last.repairs, error, stats: { ...stats, ms: Date.now() - started } });
 
@@ -218,6 +221,12 @@ export async function planDay(input: PlanDayInput, deps: PlanDayDeps, opts: Plan
         messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify({ accepted: false, issues: issues.map((i) => i.message) }) });
       } else {
         last = await session.review(parsed.data.stops);
+        // The model already had one go at its made-up reasons: code takes those sentences out.
+        if (inventedSentBack && last.issues.length && last.issues.every((i) => i.code === 'invented_preference') && session.scrubReasons(last.stops)) {
+          last.repairs.push('Took out reasons that claimed loves we have no record of.');
+          last.issues = [];
+        }
+        inventedSentBack ||= last.issues.some((i) => i.code === 'invented_preference');
         onEvent?.({ type: 'submit', attempt: stats.submits, issues: last.issues });
         if (!last.issues.length) return done(true);
         messages.push({
@@ -266,9 +275,10 @@ const FIX: Record<Issue['code'], string> = {
   too_few_food_stops: 'Add food stops with named dishes: famous local dishes at the places known for them.',
   missing_moment: 'Add a stop for it with timed_for set; our code starts it at the right time.',
   missed_moment: 'Drop or shorten an earlier stop, or pick closer places, so the traveler gets there in time.',
-  long_gap: 'Add a stop nearby to fill the free time (keep meals), or move the next stop earlier if it allows.',
+  long_gap: 'Add a place near the stop before the gap (search_places with near_place_id), from the gap\'s start to its end. Keep meals and loved moments.',
   outdoors_in_rain: 'Replace it with an indoor place nearby: a museum, palace interior, café, covered market or temple.',
   memory_unused: 'Rewrite one or two reasons to use a specific memory, wrapping the remembered detail in **double asterisks**.',
+  invented_preference: 'Rewrite that reason without it. Only cite their "Loves:" and what Laddoo remembers, never a love, dish or trip they didn\'t tell us about.',
 };
 
 function endOf(st: Stop): string {
